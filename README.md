@@ -82,7 +82,7 @@ python leak_scanner.py
 
 - `--min-chars <number>` - Minimum character length for values to consider (default: 5)
 - `--keep-found-values` - Keep the temporary file containing gathered values instead of deleting it
-- `--timeout <seconds>` - Maximum time to spend scanning filesystem for .env files (default: 30)
+- `--timeout <seconds>` - Maximum time to spend scanning filesystem for .env files (default: 30, use 0 for unlimited)
 
 ## How it works
 
@@ -124,6 +124,11 @@ Keep the temporary file for inspection:
 Only consider longer values (reduces noise):
 ```bash
 ./leak_scanner.py --min-chars 10
+```
+
+Complete filesystem scan (no timeout):
+```bash
+./leak_scanner.py --timeout 0
 ```
 
 ## Limitations

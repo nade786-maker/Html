@@ -120,7 +120,7 @@ def gather_files_by_patterns(timeout: int) -> dict[str, str]:
     processed_files = set()  # Avoid processing same file multiple times
     
     for pattern in patterns:
-        if time.time() - start_time > timeout:
+        if timeout > 0 and time.time() - start_time > timeout:
             print(f"Timeout of {timeout}s reached while searching for files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option")
             return res
             
@@ -154,7 +154,7 @@ def gather_files_by_patterns(timeout: int) -> dict[str, str]:
             print(f"Read values from {fpath}")
             
             # Check timeout after processing each file
-            if time.time() - start_time > timeout:
+            if timeout > 0 and time.time() - start_time > timeout:
                 print(f"Timeout of {timeout}s reached while searching for files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option")
                 return res
     
@@ -266,7 +266,7 @@ def parse_args():
     parser.add_argument(
         "--timeout",
         type=int,
-        help="Number of seconds before aborting discovery of files on hard drive.",
+        help="Number of seconds before aborting discovery of files on hard drive. Use 0 for unlimited scanning.",
         default=30
     )
 
