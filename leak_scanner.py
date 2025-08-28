@@ -266,7 +266,7 @@ def parse_args():
     parser.add_argument(
         "--timeout",
         type=int,
-        help="Number of seconds before aborting discovery of files on hard drive. Use 0 for unlimited scanning.",
+        help="Number of seconds before aborting discovery of files on hard drive. Use 0 for unlimited scanning (default: 30).",
         default=30
     )
 
