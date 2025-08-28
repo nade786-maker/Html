@@ -59,22 +59,23 @@ For more installation options, see the [ggshield documentation](https://github.c
 
 ### Run the Scanner
 
-**macOS:**
+**macOS/Linux:**
 ```bash
 git clone https://github.com/GitGuardian/s1ngularity-scanner
-python3 s1ngularity-scanner/leak_scanner.py
-```
+cd s1ngularity-scanner
 
-**Linux:**
-```bash
-git clone https://github.com/GitGuardian/s1ngularity-scanner
-python3 s1ngularity-scanner/leak_scanner.py
+# With uv (if available)
+./leak_scanner.py
+
+# Or with Python directly
+python3 leak_scanner.py
 ```
 
 **Windows:**
 ```bash
 git clone https://github.com/GitGuardian/s1ngularity-scanner
-python s1ngularity-scanner/leak_scanner.py
+cd s1ngularity-scanner
+python leak_scanner.py
 ```
 
 ## Command Line Options
@@ -106,22 +107,23 @@ The scanner collects potential secrets from these sources:
 
 Basic scan with default settings:
 ```bash
-python leak_scanner.py
+./leak_scanner.py
+# or: python3 leak_scanner.py
 ```
 
 Scan with longer timeout for large filesystems:
 ```bash
-python leak_scanner.py --timeout 120
+./leak_scanner.py --timeout 120
 ```
 
 Keep the temporary file for inspection:
 ```bash
-python leak_scanner.py --keep-found-values
+./leak_scanner.py --keep-found-values
 ```
 
 Only consider longer values (reduces noise):
 ```bash
-python leak_scanner.py --min-chars 10
+./leak_scanner.py --min-chars 10
 ```
 
 ## Limitations
