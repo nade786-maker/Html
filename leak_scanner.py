@@ -1,18 +1,25 @@
-import re
-import os
 import argparse
-import subprocess as sp
+import json
+import os
+import re
 import shutil
-from pathlib import Path
+import subprocess as sp
 import sys
-import glob
 import time
+from pathlib import Path
 
 if sys.version_info < (3, 9):
     print("Invalid python version, use a version >= 3.9")
     sys.exit(1)
 
 SECRETS_FILE_NAME = "gg_gathered_values"
+
+# Source tracking constants
+SOURCE_SEPARATOR = "__"
+ENV_VAR_PREFIX = "ENVIRONMENT_VAR"
+GITHUB_TOKEN_PREFIX = "GITHUB_TOKEN"
+NPMRC_PREFIX = "NPMRC_HOME"
+ENV_FILE_PREFIX = "ENV_FILE"
 
 assignment_regex = re.compile(
     r"""
@@ -92,9 +99,9 @@ def indices_to_delete(dirnames: list[str]):
     return res
 
 
-def gather_dotenv_values_with_walk(timeout: int) -> set[str]:
+def gather_dotenv_values_with_walk(timeout: int) -> dict[str, str]:
     home = Path().home()
-    res = set()
+    res = {}
     start_time = time.time()
     for root, dirs, files in os.walk(home):
         nb_deleted = 0
@@ -109,7 +116,11 @@ def gather_dotenv_values_with_walk(timeout: int) -> set[str]:
                 except Exception:
                     print(f"Failed reading {fpath}")
                     continue
-                res.update(extract_assigned_values(text))
+                values = extract_assigned_values(text)
+                for value in values:
+                    safe_path = str(fpath).replace('/', '_').replace('.', '_')
+                    key = f"{ENV_FILE_PREFIX}{SOURCE_SEPARATOR}{safe_path}{SOURCE_SEPARATOR}{value}"
+                    res[key] = value
                 print(f"Read values from {fpath}")
         if time.time() - start_time > timeout:
             print(f"Timeout of {timeout}s reached while searching for .env files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option")
@@ -117,8 +128,8 @@ def gather_dotenv_values_with_walk(timeout: int) -> set[str]:
     return res
 
 
-def gather_specific_files_values() -> set[str]:
-    res = set()
+def gather_specific_files_values() -> dict[str, str]:
+    res = {}
     home = Path().home()
     for path in [home / ".npmrc"]:
         if not path.is_file():
@@ -127,15 +138,52 @@ def gather_specific_files_values() -> set[str]:
             text = path.read_text()
         except Exception:
             continue
-        res.update(extract_assigned_values(text))
+        values = extract_assigned_values(text)
+        for value in values:
+            if path.name == '.npmrc':
+                key = f"{NPMRC_PREFIX}{SOURCE_SEPARATOR}{value}"
+            else:
+                key = f"FILE_{path.name}{SOURCE_SEPARATOR}{value}"
+            res[key] = value
     return res
 
 
-def gather_all_secrets(timeout: int):
-    all_values = set(os.environ.values())
+def get_source_description(source_part: str) -> str:
+    """Convert source prefix to human-readable description."""
+    source_mapping = {
+        ENV_VAR_PREFIX: "Environment variable",
+        GITHUB_TOKEN_PREFIX: "GitHub Token (gh auth token)",
+        NPMRC_PREFIX: "~/.npmrc",
+    }
+    
+    if source_part.startswith(ENV_FILE_PREFIX):
+        return source_part.replace(f"{ENV_FILE_PREFIX}{SOURCE_SEPARATOR}", "").replace("_", "/")
+    
+    return source_mapping.get(source_part, source_part)
+
+
+def display_leak(i: int, leak: dict, source_desc: str, secret_part: str) -> None:
+    """Display a single leaked secret with formatting."""
+    print(f"> Secret {i}")
+    print(f'Secret name: "{secret_part}"')
+    print(f"Source: {source_desc}")
+    print(f'Secret hash: "{leak.get("hash", "")}"')
+    print(f'Distinct locations: {leak.get("count", 0)}')
+    if leak.get("url"):
+        print("First location:")
+        print(f'    URL: "{leak.get("url")}"')
+    print()
+
+
+def gather_all_secrets(timeout: int) -> dict[str, str]:
+    all_values = {}
+    for value in os.environ.values():
+        key = f"{ENV_VAR_PREFIX}{SOURCE_SEPARATOR}{value}"
+        all_values[key] = value
     gh_token = handle_github_token_command()
     if gh_token:
-        all_values.add(gh_token)
+        key = f"{GITHUB_TOKEN_PREFIX}{SOURCE_SEPARATOR}{gh_token}"
+        all_values[key] = gh_token
     all_values.update(gather_specific_files_values())
     all_values.update(gather_dotenv_values_with_walk(timeout))
     return all_values
@@ -151,16 +199,40 @@ def find_leaks(args):
     print("Collecting potential values, this may take some time...")
     print("Privacy note: All processing happens locally on your machine. No secrets are transmitted.")
 
-    values = gather_all_secrets(args.timeout)
+    values_with_sources = gather_all_secrets(args.timeout)
 
-    selected_values = [v for v in values if v is not None and len(v) >= args.min_chars]
+    selected_items = [(k, v) for k, v in values_with_sources.items() if v is not None and len(v) >= args.min_chars]
 
-    print(f"Found {len(selected_values)} values to check for potential leaks")
+    print(f"Found {len(selected_items)} values to check for potential leaks")
     secrets_file = Path(SECRETS_FILE_NAME)
-    secrets_file.write_text("\n".join(selected_values))
+    env_content = "\n".join([f"{k}={v}" for k, v in selected_items])
+    secrets_file.write_text(env_content)
     print(f"Saved values to temporary file {SECRETS_FILE_NAME}")
     print("Checking values against GitGuardian database using secure hashing (no secrets transmitted)...")
-    sp.run(["ggshield", "hmsl", "check", SECRETS_FILE_NAME, "-n", "cleartext"])
+    result = sp.run(["ggshield", "hmsl", "check", SECRETS_FILE_NAME, "--type", "env", "-n", "key", "--json"], stdout=sp.PIPE, stderr=sp.DEVNULL, text=True)
+    
+    if result.stdout:
+        try:
+            data = json.loads(result.stdout)
+            leak_count = data.get("leaks_count", 0)
+            
+            if leak_count > 0:
+                print(f"Warning: Found {leak_count} leaked secret{'s' if leak_count > 1 else ''}.")
+                print()
+                for i, leak in enumerate(data.get("leaks", []), 1):
+                    key_name = leak.get("name", "")
+                    if SOURCE_SEPARATOR in key_name:
+                        source_part, secret_part = key_name.split(SOURCE_SEPARATOR, 1)
+                        source_desc = get_source_description(source_part)
+                        display_leak(i, leak, source_desc, secret_part)
+            else:
+                print("All right! No leaked secret has been found.")
+                
+        except (json.JSONDecodeError, KeyError) as e:
+            print("Error parsing results, showing raw output:")
+            sp.run(["ggshield", "hmsl", "check", SECRETS_FILE_NAME, "-n", "cleartext"])
+    
+    
     if not args.keep_found_values:
         os.remove(SECRETS_FILE_NAME)
         print(f"Deleted temporary file {SECRETS_FILE_NAME}")
