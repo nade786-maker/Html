@@ -149,19 +149,21 @@ def find_leaks(args):
         sys.exit(1)
 
     print("Collecting potential values, this may take some time...")
+    print("Privacy note: All processing happens locally on your machine. No secrets are transmitted.")
 
     values = gather_all_secrets(args.timeout)
 
     selected_values = [v for v in values if v is not None and len(v) >= args.min_chars]
 
-    print(f"Found {len(selected_values)} values")
+    print(f"Found {len(selected_values)} values to check for potential leaks")
     secrets_file = Path(SECRETS_FILE_NAME)
     secrets_file.write_text("\n".join(selected_values))
-    print(f"Saved values to file {SECRETS_FILE_NAME}")
+    print(f"Saved values to temporary file {SECRETS_FILE_NAME}")
+    print("Checking values against GitGuardian database using secure hashing (no secrets transmitted)...")
     sp.run(["ggshield", "hmsl", "check", SECRETS_FILE_NAME, "-n", "cleartext"])
     if not args.keep_found_values:
         os.remove(SECRETS_FILE_NAME)
-        print(f"Deleted file {SECRETS_FILE_NAME}")
+        print(f"Deleted temporary file {SECRETS_FILE_NAME}")
 
 
 def parse_args():
