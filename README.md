@@ -24,10 +24,56 @@ This project does not rely on the GitGuardian Secrets API, ensuring that no secr
 - **[ggshield](https://github.com/GitGuardian/ggshield)** - GitGuardian's CLI tool for secret scanning
 - **[GitHub CLI](https://cli.github.com/)** (optional) - for extracting GitHub tokens
 
-## Usage
+## Installation
 
+### Install ggshield
+
+**macOS:**
 ```bash
-git clone https://github.com/gitguardian/s1ngularity-scanner
+# Using Homebrew (recommended)
+brew install ggshield
+
+# Or download standalone .pkg from GitHub releases (no Python required)
+```
+📦 [Download .pkg from GitHub releases](https://github.com/GitGuardian/ggshield/releases)
+
+**Linux:**
+```bash
+# Using pipx (recommended)
+pipx install ggshield
+
+# Or use distribution packages (deb/rpm) from Cloudsmith
+```
+📦 [Download packages from Cloudsmith](https://cloudsmith.io/~gitguardian/repos/ggshield/setup/)
+
+**Windows:**
+```bash
+# Using Chocolatey
+choco install ggshield
+
+# Or download standalone .zip from GitHub releases (no Python required)
+```
+📦 [Download .zip from GitHub releases](https://github.com/GitGuardian/ggshield/releases)
+
+For more installation options, see the [ggshield documentation](https://github.com/GitGuardian/ggshield#installation).
+
+### Run the Scanner
+
+**macOS:**
+```bash
+git clone https://github.com/GitGuardian/s1ngularity-scanner
+python3 s1ngularity-scanner/leak_scanner.py
+```
+
+**Linux:**
+```bash
+git clone https://github.com/GitGuardian/s1ngularity-scanner
+python3 s1ngularity-scanner/leak_scanner.py
+```
+
+**Windows:**
+```bash
+git clone https://github.com/GitGuardian/s1ngularity-scanner
 python s1ngularity-scanner/leak_scanner.py
 ```
 
