@@ -128,7 +128,8 @@ def select_file(filepath: Path) -> str | None:
     return key
 
 
-def gather_files_with_walk(timeout: int) -> dict[str, str]:
+def gather_secrets_from_files_with_walk(timeout: int) -> dict[str, str]:
+    """Gather secrets from files matching known patterns using os.walk."""
     home = Path().home()
     res = {}
     start_time = time.time()
@@ -151,64 +152,9 @@ def gather_files_with_walk(timeout: int) -> dict[str, str]:
                     key = f"{filekey}{SOURCE_SEPARATOR}{value}"
                     res[key] = value
                 print(f"Read values from {fpath}")
-        if time.time() - start_time > timeout:
-            print(f"Timeout of {timeout}s reached while searching for .env files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option")
-            return res
-    return res
-
-def gather_files_by_patterns(timeout: int) -> dict[str, str]:
-    """Gather secrets from files matching known patterns using rglob."""
-    home = Path.home()
-    res = {}
-    start_time = time.time()
-
-    # Define patterns we're looking for
-    patterns = [
-        '.env*',    # All .env files
-        '.npmrc'    # NPM configuration files
-    ]
-
-    processed_files = set()  # Avoid processing same file multiple times
-
-    for pattern in patterns:
         if timeout > 0 and time.time() - start_time > timeout:
             print(f"Timeout of {timeout}s reached while searching for files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option")
             return res
-
-        for fpath in home.rglob(pattern):
-            if fpath in processed_files:
-                continue
-            if should_skip_path(fpath):
-                continue
-            if not fpath.is_file():
-                continue
-
-            processed_files.add(fpath)
-
-            try:
-                text = fpath.read_text()
-            except Exception:
-                print(f"Failed reading {fpath}")
-                continue
-
-            values = extract_assigned_values(text)
-            for value in values:
-                if fpath.name == '.npmrc':
-                    key = f"{NPMRC_PREFIX}{SOURCE_SEPARATOR}{value}"
-                elif fpath.name.startswith('.env'):
-                    safe_path = str(fpath).replace('/', '_').replace('.', '_')
-                    key = f"{ENV_FILE_PREFIX}{SOURCE_SEPARATOR}{safe_path}{SOURCE_SEPARATOR}{value}"
-                else:
-                    key = f"FILE_{fpath.name}{SOURCE_SEPARATOR}{value}"
-                res[key] = value
-
-            print(f"Read values from {fpath}")
-
-            # Check timeout after processing each file
-            if timeout > 0 and time.time() - start_time > timeout:
-                print(f"Timeout of {timeout}s reached while searching for files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option")
-                return res
-
     return res
 
 
@@ -239,7 +185,7 @@ def display_leak(i: int, leak: dict, source_desc: str, secret_part: str) -> None
     print()
 
 
-def gather_all_secrets(timeout: int, use_glob: bool) -> dict[str, str]:
+def gather_all_secrets(timeout: int) -> dict[str, str]:
     all_values = {}
     for value in os.environ.values():
         key = f"{ENV_VAR_PREFIX}{SOURCE_SEPARATOR}{value}"
@@ -248,10 +194,7 @@ def gather_all_secrets(timeout: int, use_glob: bool) -> dict[str, str]:
     if gh_token:
         key = f"{GITHUB_TOKEN_PREFIX}{SOURCE_SEPARATOR}{gh_token}"
         all_values[key] = gh_token
-    if use_glob:
-        all_values.update(gather_files_by_patterns(timeout))
-    else:
-        all_values.update(gather_files_with_walk(timeout))
+        all_values.update(gather_secrets_from_files_with_walk(timeout))
     return all_values
 
 
@@ -265,7 +208,7 @@ def find_leaks(args):
     print("Collecting potential values, this may take some time...")
     print("Privacy note: All processing happens locally on your machine. No secrets are transmitted.")
 
-    values_with_sources = gather_all_secrets(args.timeout, args.glob)
+    values_with_sources = gather_all_secrets(args.timeout)
 
     selected_items = [(k, v) for k, v in values_with_sources.items() if v is not None and len(v) >= args.min_chars]
 
@@ -322,10 +265,6 @@ def parse_args():
         type=int,
         help="Number of seconds before aborting discovery of files on hard drive. Use 0 for unlimited scanning (default: 30).",
         default=30
-    )
-    parser.add_argument(
-        "--glob",
-        action="store_true",
     )
 
     return parser.parse_args()
