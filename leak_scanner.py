@@ -85,14 +85,6 @@ def extract_assigned_values(text: str) -> set[str]:
     return {remove_quotes(val) for val in res}
 
 
-def handle_file_command(args):
-    text = Path(args.file).read_text()
-    values = extract_assigned_values(text)
-
-    for value in values:
-        print(value)
-
-
 def handle_github_token_command(*args) -> str | None:
     if shutil.which("gh"):
         try:
