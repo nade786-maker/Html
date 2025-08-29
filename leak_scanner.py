@@ -31,7 +31,7 @@ assignment_regex = re.compile(
     ^\s*
     [a-zA-Z_]\w*
     \s*=\s*
-    (?P<value>.+)
+    (?P<value>.{1,5000})
 """,
     re.VERBOSE,
 )
@@ -40,7 +40,7 @@ json_assignment_regex = re.compile(
     r"""
     "[a-zA-Z_]\w*"
     \s*:\s*
-    "(?P<value>.+?)"
+    "(?P<value>.{1,5000}?)"
 """,
     re.VERBOSE,
 )
