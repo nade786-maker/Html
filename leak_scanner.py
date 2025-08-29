@@ -229,64 +229,65 @@ def gather_files_by_patterns(timeout: int, verbose: bool = False) -> dict[str, s
                 fpath = Path(root) / filename
                 filekey = select_file(fpath)
 
-                if filekey is not None:
-                    files_processed += 1
+                if filekey is None:
+                    continue
 
-                    try:
-                        text = fpath.read_text()
-                    except Exception:
-                        if verbose:
-                            print(f"Failed reading {fpath}")
-                        continue
+                files_processed += 1
+                try:
+                    text = fpath.read_text()
+                except Exception:
+                    if verbose:
+                        print(f"Failed reading {fpath}")
+                    continue
 
-                    values = extract_assigned_values(text)
-                    if values and verbose:
-                        print(f"\r   Found {len(values)} values in {fpath}" + " " * 20)
-                    elif verbose:
-                        print(f"\r   No values found in {fpath}" + " " * 20)
+                values = extract_assigned_values(text)
+                if values and verbose:
+                    print(f"\r   Found {len(values)} values in {fpath}" + " " * 20)
+                elif verbose:
+                    print(f"\r   No values found in {fpath}" + " " * 20)
 
-                    for value in values:
-                        key = f"{filekey}{SOURCE_SEPARATOR}{value}"
-                        res[key] = value
+                for value in values:
+                    key = f"{filekey}{SOURCE_SEPARATOR}{value}"
+                    res[key] = value
 
-                    # Show progress update when we find files
-                    should_show_progress = (
-                        files_processed % 3 == 0 or
-                        files_processed == 1 or
-                        (current_time - last_progress_time) >= 1
-                    )
+                # Show progress update when we find files
+                should_show_progress = (
+                    files_processed % 3 == 0 or
+                    files_processed == 1 or
+                    (current_time - last_progress_time) >= 1
+                )
 
-                    if should_show_progress:
-                        spinner = spinner_chars[spinner_index % len(spinner_chars)]
-                        elapsed = int(current_time - start_time)
-                        if verbose:
-                            print(f"\r{spinner} Scanning... {files_processed} files processed ({elapsed}s)", end="", flush=True)
-                        else:
-                            print(f"\r{spinner} Scanning... {files_processed} files processed ({elapsed}s)", end="", flush=True)
-                        last_progress_time = current_time
+                if should_show_progress:
+                    spinner = spinner_chars[spinner_index % len(spinner_chars)]
+                    elapsed = int(current_time - start_time)
+                    if verbose:
+                        print(f"\r{spinner} Scanning... {files_processed} files processed ({elapsed}s)", end="", flush=True)
+                    else:
+                        print(f"\r{spinner} Scanning... {files_processed} files processed ({elapsed}s)", end="", flush=True)
+                    last_progress_time = current_time
 
-                    # Check timeout after processing file
-                    current_time = time.time()
-                    if timeout > 0 and (current_time - start_time) > timeout:
-                        if verbose:
-                            print(f"⏰ Timeout of {timeout}s reached after processing {files_processed} files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option")
-                        else:
-                            print(f"\r⏰ Timeout reached after {files_processed} files ({timeout}s)" + " " * 20 + "\n", end="")
-                        # Still show final counts even on timeout
-                         npmrc_values = sum(1 for k in res.keys() if k.startswith(Source.NPMRC.value))
-                        env_files = sum(1 for k in res.keys() if k.startswith(Source.ENV_FILE.value))
-                        private_keys = sum(1 for k in res.keys() if k.startswith(Source.PRIVATE_KEY.value))
-                        elapsed = int(current_time - start_time)
-                        if verbose:
-                            print(f"\r   ├─ Configuration files: {npmrc_values} values found ({files_processed} files processed, {elapsed}s)")
-                            print(f"   ├─ Environment files: {env_files} values found")
-                            print(f"   └─ Private key files: {private_keys} values found")
-                        else:
-                            print(f"\r   ├─ Configuration files: {npmrc_values} values found ({files_processed} files processed, {elapsed}s)", end="", flush=True)
-                            print()
-                            print(f"   ├─ Environment files: {env_files} values found")
-                            print(f"   └─ Private key files: {private_keys} values found")
-                        return res
+                # Check timeout after processing file
+                current_time = time.time()
+                if timeout > 0 and (current_time - start_time) > timeout:
+                    if verbose:
+                        print(f"⏰ Timeout of {timeout}s reached after processing {files_processed} files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option")
+                    else:
+                        print(f"\r⏰ Timeout reached after {files_processed} files ({timeout}s)" + " " * 20 + "\n", end="")
+                    # Still show final counts even on timeout
+                        npmrc_values = sum(1 for k in res.keys() if k.startswith(Source.NPMRC.value))
+                    env_files = sum(1 for k in res.keys() if k.startswith(Source.ENV_FILE.value))
+                    private_keys = sum(1 for k in res.keys() if k.startswith(Source.PRIVATE_KEY.value))
+                    elapsed = int(current_time - start_time)
+                    if verbose:
+                        print(f"\r   ├─ Configuration files: {npmrc_values} values found ({files_processed} files processed, {elapsed}s)")
+                        print(f"   ├─ Environment files: {env_files} values found")
+                        print(f"   └─ Private key files: {private_keys} values found")
+                    else:
+                        print(f"\r   ├─ Configuration files: {npmrc_values} values found ({files_processed} files processed, {elapsed}s)", end="", flush=True)
+                        print()
+                        print(f"   ├─ Environment files: {env_files} values found")
+                        print(f"   └─ Private key files: {private_keys} values found")
+                    return res
 
     except KeyboardInterrupt:
         if verbose:
