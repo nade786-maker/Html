@@ -105,25 +105,76 @@ def should_skip_path(fpath: Path) -> bool:
     return False
 
 
+
+def indices_to_delete(dirnames: list[str]):
+    res = []
+    for i, name in enumerate(dirnames):
+        if name.startswith("."):
+            res.append(i)
+        if name == "node_modules":
+            res.append(i)
+    return res
+
+
+def select_file(filepath: Path) -> str | None:
+    key = None
+    safe_path = str(filepath).replace('/', '_').replace('.', '_')
+    if filepath.name.startswith('.env') and not "example" in filepath.name:
+        key = f"{ENV_FILE_PREFIX}{SOURCE_SEPARATOR}{safe_path}"
+
+    if filepath.name == '.npmrc':
+        key = f"{NPMRC_PREFIX}{SOURCE_SEPARATOR}{safe_path}"
+
+    return key
+
+
+def gather_files_with_walk(timeout: int) -> dict[str, str]:
+    home = Path().home()
+    res = {}
+    start_time = time.time()
+    for root, dirs, files in os.walk(home):
+        nb_deleted = 0
+        for ind in indices_to_delete(dirs):
+            del dirs[ind - nb_deleted]
+            nb_deleted += 1
+        for filename in files:
+            fpath = Path(root) / filename
+            filekey = select_file(fpath)
+            if filekey is not None:
+                try:
+                    text = fpath.read_text()
+                except Exception:
+                    print(f"Failed reading {fpath}")
+                    continue
+                values = extract_assigned_values(text)
+                for value in values:
+                    key = f"{filekey}{SOURCE_SEPARATOR}{value}"
+                    res[key] = value
+                print(f"Read values from {fpath}")
+        if time.time() - start_time > timeout:
+            print(f"Timeout of {timeout}s reached while searching for .env files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option")
+            return res
+    return res
+
 def gather_files_by_patterns(timeout: int) -> dict[str, str]:
     """Gather secrets from files matching known patterns using rglob."""
     home = Path.home()
     res = {}
     start_time = time.time()
-    
+
     # Define patterns we're looking for
     patterns = [
         '.env*',    # All .env files
         '.npmrc'    # NPM configuration files
     ]
-    
+
     processed_files = set()  # Avoid processing same file multiple times
-    
+
     for pattern in patterns:
         if timeout > 0 and time.time() - start_time > timeout:
             print(f"Timeout of {timeout}s reached while searching for files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option")
             return res
-            
+
         for fpath in home.rglob(pattern):
             if fpath in processed_files:
                 continue
@@ -131,15 +182,15 @@ def gather_files_by_patterns(timeout: int) -> dict[str, str]:
                 continue
             if not fpath.is_file():
                 continue
-                
+
             processed_files.add(fpath)
-            
+
             try:
                 text = fpath.read_text()
             except Exception:
                 print(f"Failed reading {fpath}")
                 continue
-                
+
             values = extract_assigned_values(text)
             for value in values:
                 if fpath.name == '.npmrc':
@@ -150,14 +201,14 @@ def gather_files_by_patterns(timeout: int) -> dict[str, str]:
                 else:
                     key = f"FILE_{fpath.name}{SOURCE_SEPARATOR}{value}"
                 res[key] = value
-            
+
             print(f"Read values from {fpath}")
-            
+
             # Check timeout after processing each file
             if timeout > 0 and time.time() - start_time > timeout:
                 print(f"Timeout of {timeout}s reached while searching for files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option")
                 return res
-    
+
     return res
 
 
@@ -168,10 +219,10 @@ def get_source_description(source_part: str) -> str:
         GITHUB_TOKEN_PREFIX: "GitHub Token (gh auth token)",
         NPMRC_PREFIX: "~/.npmrc",
     }
-    
+
     if source_part.startswith(ENV_FILE_PREFIX):
         return source_part.replace(f"{ENV_FILE_PREFIX}{SOURCE_SEPARATOR}", "").replace("_", "/")
-    
+
     return source_mapping.get(source_part, source_part)
 
 
@@ -188,7 +239,7 @@ def display_leak(i: int, leak: dict, source_desc: str, secret_part: str) -> None
     print()
 
 
-def gather_all_secrets(timeout: int) -> dict[str, str]:
+def gather_all_secrets(timeout: int, use_glob: bool) -> dict[str, str]:
     all_values = {}
     for value in os.environ.values():
         key = f"{ENV_VAR_PREFIX}{SOURCE_SEPARATOR}{value}"
@@ -197,7 +248,10 @@ def gather_all_secrets(timeout: int) -> dict[str, str]:
     if gh_token:
         key = f"{GITHUB_TOKEN_PREFIX}{SOURCE_SEPARATOR}{gh_token}"
         all_values[key] = gh_token
-    all_values.update(gather_files_by_patterns(timeout))
+    if use_glob:
+        all_values.update(gather_files_by_patterns(timeout))
+    else:
+        all_values.update(gather_files_with_walk(timeout))
     return all_values
 
 
@@ -211,7 +265,7 @@ def find_leaks(args):
     print("Collecting potential values, this may take some time...")
     print("Privacy note: All processing happens locally on your machine. No secrets are transmitted.")
 
-    values_with_sources = gather_all_secrets(args.timeout)
+    values_with_sources = gather_all_secrets(args.timeout, args.glob)
 
     selected_items = [(k, v) for k, v in values_with_sources.items() if v is not None and len(v) >= args.min_chars]
 
@@ -222,12 +276,12 @@ def find_leaks(args):
     print(f"Saved values to temporary file {SECRETS_FILE_NAME}")
     print("Checking values against GitGuardian database using secure hashing (no secrets transmitted)...")
     result = sp.run(["ggshield", "hmsl", "check", SECRETS_FILE_NAME, "--type", "env", "-n", "key", "--json"], stdout=sp.PIPE, stderr=sp.DEVNULL, text=True)
-    
+
     if result.stdout:
         try:
             data = json.loads(result.stdout)
             leak_count = data.get("leaks_count", 0)
-            
+
             if leak_count > 0:
                 print(f"Warning: Found {leak_count} leaked secret{'s' if leak_count > 1 else ''}.")
                 print()
@@ -239,12 +293,12 @@ def find_leaks(args):
                         display_leak(i, leak, source_desc, secret_part)
             else:
                 print("All right! No leaked secret has been found.")
-                
+
         except (json.JSONDecodeError, KeyError) as e:
             print("Error parsing results, showing raw output:")
             sp.run(["ggshield", "hmsl", "check", SECRETS_FILE_NAME, "-n", "cleartext"])
-    
-    
+
+
     if not args.keep_found_values:
         os.remove(SECRETS_FILE_NAME)
         print(f"Deleted temporary file {SECRETS_FILE_NAME}")
@@ -268,6 +322,10 @@ def parse_args():
         type=int,
         help="Number of seconds before aborting discovery of files on hard drive. Use 0 for unlimited scanning (default: 30).",
         default=30
+    )
+    parser.add_argument(
+        "--glob",
+        action="store_true",
     )
 
     return parser.parse_args()
