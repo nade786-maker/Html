@@ -26,7 +26,6 @@ from pathlib import Path
 from shutil import which
 from typing import Dict, Iterator, List, Tuple
 
-
 PATTERNS_FILE = "file_secrets_patterns.jsonl"
 
 # --- Configuration ---

@@ -11,6 +11,7 @@ import shutil
 import subprocess as sp
 import sys
 import time
+from enum import Enum
 from pathlib import Path
 
 if sys.version_info < (3, 9):
@@ -19,12 +20,18 @@ if sys.version_info < (3, 9):
 
 SECRETS_FILE_NAME = "gg_gathered_values"
 
+
+class Source(Enum):
+    ENV_VAR = "ENVIRONMENT_VAR"
+    GITHUB_TOKEN = "GITHUB_TOKEN"
+    NPMRC = "NPMRC_HOME"
+    ENV_FILE = "ENV_FILE"
+
+
 # Source tracking constants
 SOURCE_SEPARATOR = "__"
-ENV_VAR_PREFIX = "ENVIRONMENT_VAR"
-GITHUB_TOKEN_PREFIX = "GITHUB_TOKEN"
-NPMRC_PREFIX = "NPMRC_HOME"
-ENV_FILE_PREFIX = "ENV_FILE"
+
+
 
 assignment_regex = re.compile(
     r"""
@@ -119,11 +126,11 @@ def indices_to_delete(dirs: list[str]) -> list[int]:
 
 def select_file(fpath: Path) -> str | None:
     """Return the file key prefix if this file should be processed."""
+    safe_path = str(fpath).replace('/', '_').replace('.', '_')
     if fpath.name == '.npmrc':
-        return NPMRC_PREFIX
+        return f"{Source.NPMRC.value}{SOURCE_SEPARATOR}{safe_path}"
     elif fpath.name.startswith('.env') and not "example" in fpath.name:
-        safe_path = str(fpath).replace('/', '_').replace('.', '_')
-        return f"{ENV_FILE_PREFIX}{SOURCE_SEPARATOR}{safe_path}"
+        return f"{Source.ENV_FILE.value}{SOURCE_SEPARATOR}{safe_path}"
     return None
 
 
@@ -161,8 +168,8 @@ def gather_files_by_patterns(timeout: int, verbose: bool = False) -> dict[str, s
                     if verbose:
                         print(f"⏰ Timeout of {timeout}s reached while searching for files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option")
                 # Still show final counts even on timeout
-                npmrc_values = sum(1 for k in res.keys() if k.startswith(NPMRC_PREFIX))
-                env_files = sum(1 for k in res.keys() if k.startswith(ENV_FILE_PREFIX))
+                npmrc_values = sum(1 for k in res.keys() if k.startswith(Source.NPMRC.value))
+                env_files = sum(1 for k in res.keys() if k.startswith(Source.ENV_FILE.value))
                 elapsed = int(current_time - start_time)
                 if verbose:
                     print(f"\r   ├─ Configuration files: {npmrc_values} values found ({files_processed} files processed, {elapsed}s)")
@@ -245,8 +252,8 @@ def gather_files_by_patterns(timeout: int, verbose: bool = False) -> dict[str, s
                         else:
                             print(f"\r⏰ Timeout reached after {files_processed} files ({timeout}s)" + " " * 20 + "\n", end="")
                         # Still show final counts even on timeout
-                        npmrc_values = sum(1 for k in res.keys() if k.startswith(NPMRC_PREFIX))
-                        env_files = sum(1 for k in res.keys() if k.startswith(ENV_FILE_PREFIX))
+                        npmrc_values = sum(1 for k in res.keys() if k.startswith(Source.NPMRC.value))
+                        env_files = sum(1 for k in res.keys() if k.startswith(Source.ENV_FILE.value))
                         elapsed = int(current_time - start_time)
                         if verbose:
                             print(f"\r   ├─ Configuration files: {npmrc_values} values found ({files_processed} files processed, {elapsed}s)")
@@ -263,8 +270,8 @@ def gather_files_by_patterns(timeout: int, verbose: bool = False) -> dict[str, s
         return res
     
     # Count final file results for progress display
-    npmrc_values = sum(1 for k in res.keys() if k.startswith(NPMRC_PREFIX))
-    env_files = sum(1 for k in res.keys() if k.startswith(ENV_FILE_PREFIX))
+    npmrc_values = sum(1 for k in res.keys() if k.startswith(Source.NPMRC.value))
+    env_files = sum(1 for k in res.keys() if k.startswith(Source.ENV_FILE.value))
     
     # Show file scanning completion with file count and timing
     elapsed = int(time.time() - start_time)
@@ -282,13 +289,13 @@ def gather_files_by_patterns(timeout: int, verbose: bool = False) -> dict[str, s
 def get_source_description(source_part: str) -> str:
     """Convert source prefix to human-readable description."""
     source_mapping = {
-        ENV_VAR_PREFIX: "Environment variable",
-        GITHUB_TOKEN_PREFIX: "GitHub Token (gh auth token)",
-        NPMRC_PREFIX: "~/.npmrc",
+        Source.ENV_VAR.value: "Environment variable",
+        Source.GITHUB_TOKEN.value: "GitHub Token (gh auth token)",
+        Source.NPMRC.value: "~/.npmrc",
     }
     
-    if source_part.startswith(ENV_FILE_PREFIX):
-        return source_part.replace(f"{ENV_FILE_PREFIX}{SOURCE_SEPARATOR}", "").replace("_", "/")
+    if source_part.startswith(Source.ENV_FILE.value):
+        return source_part.replace(f"{Source.ENV_FILE.value}{SOURCE_SEPARATOR}", "").replace("_", "/")
     
     return source_mapping.get(source_part, source_part)
 
@@ -312,7 +319,7 @@ def gather_all_secrets(timeout: int, verbose: bool = False) -> dict[str, str]:
     # Collect environment variables
     env_vars = 0
     for value in os.environ.values():
-        key = f"{ENV_VAR_PREFIX}{SOURCE_SEPARATOR}{value}"
+        key = f"{Source.ENV_VAR.value}{SOURCE_SEPARATOR}{value}"
         all_values[key] = value
         env_vars += 1
     
@@ -327,7 +334,7 @@ def gather_all_secrets(timeout: int, verbose: bool = False) -> dict[str, str]:
     gh_token = handle_github_token_command()
     github_found = False
     if gh_token:
-        key = f"{GITHUB_TOKEN_PREFIX}{SOURCE_SEPARATOR}{gh_token}"
+        key = f"{Source.GITHUB_TOKEN.value}{SOURCE_SEPARATOR}{gh_token}"
         all_values[key] = gh_token
         github_found = True
     
