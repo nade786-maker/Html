@@ -19,6 +19,29 @@ if sys.version_info < (3, 9):
     sys.exit(1)
 
 SECRETS_FILE_NAME = "gg_gathered_values"
+PRIVATE_KEYS_FILENAMES = (
+  "id_rsa",
+  "id_dsa",
+  "id_ecdsa",
+  "id_ed25519",
+  "server.key",
+  "private.key",
+  "ssl.key",
+  "mydomain.key",
+  "certificate.pfx",
+  "certificate.p12",
+  "secring.gpg",
+  "private.key",
+  ".gnupg/private-keys-v1.d",
+  "aws_private.pem",
+  "my-key.pem",
+  "ta.key",
+  "server.key",
+  "client.key",
+  "private.pem",
+  "user.key",
+  "private_key.dat"
+)
 
 
 class Source(Enum):
@@ -26,8 +49,13 @@ class Source(Enum):
     GITHUB_TOKEN = "GITHUB_TOKEN"
     NPMRC = "NPMRC_HOME"
     ENV_FILE = "ENV_FILE"
+    PRIVATE_KEY = "PRIVATE_KEY"
 
-
+SCAN_METHOD = {
+    Source.NPMRC: "parse",
+    Source.ENV_FILE: "parse",
+    Source.PRIVATE_KEY: "full_text"
+}
 # Source tracking constants
 SOURCE_SEPARATOR = "__"
 
@@ -102,22 +130,11 @@ def handle_github_token_command(*args) -> str | None:
     return None
 
 
-def should_skip_path(fpath: Path) -> bool:
-    """Check if a file path should be skipped based on directory exclusions."""
-    parts = fpath.parts
-    for part in parts:
-        if part.startswith('.') and part not in {'.env', '.npmrc'} and not part.startswith('.env'):
-            return True
-        if part == 'node_modules':
-            return True
-    return False
-
-
 def indices_to_delete(dirs: list[str]) -> list[int]:
     """Return indices of directories to skip during os.walk traversal."""
     indices = []
     for i, dirname in enumerate(dirs):
-        if dirname.startswith('.') and dirname not in {'.env'} and not dirname.startswith('.env'):
+        if dirname.startswith('.') and dirname not in {'.env', '.ssh'} and not dirname.startswith('.env'):
             indices.append(i)
         elif dirname == 'node_modules':
             indices.append(i)
@@ -131,6 +148,7 @@ def select_file(fpath: Path) -> str | None:
         return f"{Source.NPMRC.value}{SOURCE_SEPARATOR}{safe_path}"
     elif fpath.name.startswith('.env') and not "example" in fpath.name:
         return f"{Source.ENV_FILE.value}{SOURCE_SEPARATOR}{safe_path}"
+
     return None
 
 
@@ -142,21 +160,21 @@ def gather_files_by_patterns(timeout: int, verbose: bool = False) -> dict[str, s
     files_processed = 0
     last_progress_time = start_time
     last_spinner_time = start_time
-    
-    # Progress indicator characters  
+
+    # Progress indicator characters
     spinner_chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧']
     spinner_index = 0
-    
+
     # Show initial progress immediately
     if not verbose:
         print(f"\r{spinner_chars[0]} Starting scan...", end="", flush=True)
     elif verbose:
         print(f"\r{spinner_chars[0]} Starting filesystem scan...", end="", flush=True)
-    
+
     try:
         for root, dirs, files in os.walk(home):
             current_time = time.time()
-            
+
             # Check timeout before processing directory - fix for timeout 0 bug
             if timeout > 0 and (current_time - start_time) > timeout:
                 if files_processed > 0:
@@ -170,16 +188,19 @@ def gather_files_by_patterns(timeout: int, verbose: bool = False) -> dict[str, s
                 # Still show final counts even on timeout
                 npmrc_values = sum(1 for k in res.keys() if k.startswith(Source.NPMRC.value))
                 env_files = sum(1 for k in res.keys() if k.startswith(Source.ENV_FILE.value))
+                private_keys = sum(1 for k in res.keys() if k.startswith(Source.PRIVATE_KEY.value))
                 elapsed = int(current_time - start_time)
                 if verbose:
                     print(f"\r   ├─ Configuration files: {npmrc_values} values found ({files_processed} files processed, {elapsed}s)")
-                    print(f"   └─ Environment files: {env_files} values found")
+                    print(f"   ├─ Environment files: {env_files} values found")
+                    print(f"   └─ Private key files: {private_keys} values found")
                 else:
                     print(f"\r   ├─ Configuration files: {npmrc_values} values found ({files_processed} files processed, {elapsed}s)", end="", flush=True)
                     print()
-                    print(f"   └─ Environment files: {env_files} values found")
+                    print(f"   ├─ Environment files: {env_files} values found")
+                    print(f"   └─ Private key files: {private_keys} values found")
                 return res
-            
+
             # Update spinner during directory traversal to show we're alive
             if (current_time - last_spinner_time) >= 0.2:
                 spinner_index += 1
@@ -196,45 +217,45 @@ def gather_files_by_patterns(timeout: int, verbose: bool = False) -> dict[str, s
                     else:
                         print(f"\r{spinner} Scanning... {files_processed} files processed ({elapsed}s)", end="", flush=True)
                 last_spinner_time = current_time
-            
+
             # Remove unwanted directories during traversal (performance optimization)
             nb_deleted = 0
             for ind in indices_to_delete(dirs):
                 del dirs[ind - nb_deleted]
                 nb_deleted += 1
-            
+
             # Process files in current directory
             for filename in files:
                 fpath = Path(root) / filename
                 filekey = select_file(fpath)
-                
+
                 if filekey is not None:
                     files_processed += 1
-                    
+
                     try:
                         text = fpath.read_text()
                     except Exception:
                         if verbose:
                             print(f"Failed reading {fpath}")
                         continue
-                    
+
                     values = extract_assigned_values(text)
                     if values and verbose:
                         print(f"\r   Found {len(values)} values in {fpath}" + " " * 20)
                     elif verbose:
                         print(f"\r   No values found in {fpath}" + " " * 20)
-                        
+
                     for value in values:
                         key = f"{filekey}{SOURCE_SEPARATOR}{value}"
                         res[key] = value
-                    
+
                     # Show progress update when we find files
                     should_show_progress = (
-                        files_processed % 3 == 0 or 
-                        files_processed == 1 or 
+                        files_processed % 3 == 0 or
+                        files_processed == 1 or
                         (current_time - last_progress_time) >= 1
                     )
-                    
+
                     if should_show_progress:
                         spinner = spinner_chars[spinner_index % len(spinner_chars)]
                         elapsed = int(current_time - start_time)
@@ -243,7 +264,7 @@ def gather_files_by_patterns(timeout: int, verbose: bool = False) -> dict[str, s
                         else:
                             print(f"\r{spinner} Scanning... {files_processed} files processed ({elapsed}s)", end="", flush=True)
                         last_progress_time = current_time
-                    
+
                     # Check timeout after processing file
                     current_time = time.time()
                     if timeout > 0 and (current_time - start_time) > timeout:
@@ -252,37 +273,43 @@ def gather_files_by_patterns(timeout: int, verbose: bool = False) -> dict[str, s
                         else:
                             print(f"\r⏰ Timeout reached after {files_processed} files ({timeout}s)" + " " * 20 + "\n", end="")
                         # Still show final counts even on timeout
-                        npmrc_values = sum(1 for k in res.keys() if k.startswith(Source.NPMRC.value))
+                         npmrc_values = sum(1 for k in res.keys() if k.startswith(Source.NPMRC.value))
                         env_files = sum(1 for k in res.keys() if k.startswith(Source.ENV_FILE.value))
+                        private_keys = sum(1 for k in res.keys() if k.startswith(Source.PRIVATE_KEY.value))
                         elapsed = int(current_time - start_time)
                         if verbose:
                             print(f"\r   ├─ Configuration files: {npmrc_values} values found ({files_processed} files processed, {elapsed}s)")
-                            print(f"   └─ Environment files: {env_files} values found")
+                            print(f"   ├─ Environment files: {env_files} values found")
+                            print(f"   └─ Private key files: {private_keys} values found")
                         else:
                             print(f"\r   ├─ Configuration files: {npmrc_values} values found ({files_processed} files processed, {elapsed}s)", end="", flush=True)
                             print()
-                            print(f"   └─ Environment files: {env_files} values found")
+                            print(f"   ├─ Environment files: {env_files} values found")
+                            print(f"   └─ Private key files: {private_keys} values found")
                         return res
-    
+
     except KeyboardInterrupt:
         if verbose:
             print("Scan interrupted by user")
         return res
-    
+
     # Count final file results for progress display
     npmrc_values = sum(1 for k in res.keys() if k.startswith(Source.NPMRC.value))
     env_files = sum(1 for k in res.keys() if k.startswith(Source.ENV_FILE.value))
-    
+    private_keys = sum(1 for k in res.keys() if k.startswith(Source.PRIVATE_KEY.value))
+
     # Show file scanning completion with file count and timing
     elapsed = int(time.time() - start_time)
     if verbose:
         print(f"\r   ├─ Configuration files: {npmrc_values} values found ({files_processed} files processed, {elapsed}s)")
-        print(f"   └─ Environment files: {env_files} values found")
+        print(f"   ├─ Environment files: {env_files} values found")
+        print(f"   └─ Private key files: {private_keys} values found")
     else:
         print(f"\r   ├─ Configuration files: {npmrc_values} values found ({files_processed} files processed, {elapsed}s)", end="", flush=True)
         print()
-        print(f"   └─ Environment files: {env_files} values found")
-    
+        print(f"   ├─ Environment files: {env_files} values found")
+        print(f"   └─ Private key files: {private_keys} values found")
+
     return res
 
 
@@ -293,10 +320,12 @@ def get_source_description(source_part: str) -> str:
         Source.GITHUB_TOKEN.value: "GitHub Token (gh auth token)",
         Source.NPMRC.value: "~/.npmrc",
     }
-    
+
     if source_part.startswith(Source.ENV_FILE.value):
         return source_part.replace(f"{Source.ENV_FILE.value}{SOURCE_SEPARATOR}", "").replace("_", "/")
-    
+    elif source_part.startswith(Source.PRIVATE_KEY.value):
+        return source_part.replace(f"{Source.PRIVATE_KEY.value}{SOURCE_SEPARATOR}", "").replace("_", "/")
+
     return source_mapping.get(source_part, source_part)
 
 
@@ -315,21 +344,21 @@ def display_leak(i: int, leak: dict, source_desc: str, secret_part: str) -> None
 
 def gather_all_secrets(timeout: int, verbose: bool = False) -> dict[str, str]:
     all_values = {}
-    
+
     # Collect environment variables
     env_vars = 0
     for value in os.environ.values():
         key = f"{Source.ENV_VAR.value}{SOURCE_SEPARATOR}{value}"
         all_values[key] = value
         env_vars += 1
-    
+
     # Show environment variables progress
     if verbose:
         print(f"   ├─ Environment variables: {env_vars} found")
     else:
         print(f"\r   ├─ Environment variables: {env_vars} found", end="", flush=True)
         print()  # Move to next line for next output
-    
+
     # Collect GitHub token
     gh_token = handle_github_token_command()
     github_found = False
@@ -337,7 +366,7 @@ def gather_all_secrets(timeout: int, verbose: bool = False) -> dict[str, str]:
         key = f"{Source.GITHUB_TOKEN.value}{SOURCE_SEPARATOR}{gh_token}"
         all_values[key] = gh_token
         github_found = True
-    
+
     # Show GitHub token progress
     if github_found:
         if verbose:
@@ -351,11 +380,11 @@ def gather_all_secrets(timeout: int, verbose: bool = False) -> dict[str, str]:
         else:
             print(f"\r   ├─ GitHub token: not found", end="", flush=True)
             print()  # Move to next line for next output
-    
+
     # Collect files using optimized os.walk method
     file_values = gather_files_by_patterns(timeout, verbose)
     all_values.update(file_values)
-    
+
     return all_values
 
 
@@ -379,9 +408,9 @@ def find_leaks(args):
     if args.verbose:
         timeout_desc = f"timeout: {args.timeout}s" if args.timeout > 0 else "no timeout"
         print(f"📁 Scanning system ({timeout_desc})...")
-    
+
     values_with_sources = gather_all_secrets(args.timeout, args.verbose)
-    
+
     if args.verbose:
         print()  # Extra spacing after tree display
 
@@ -393,12 +422,12 @@ def find_leaks(args):
         print(f"🔍 Checking {len(selected_items)} values against public leak database ({filtered_count} filtered, < {args.min_chars} chars)...")
     else:
         print(f"🔍 Checking {len(selected_items)} values against public leak database...")
-    
+
     secrets_file = Path(SECRETS_FILE_NAME)
     env_content = "\n".join([f"{k}={v}" for k, v in selected_items])
     secrets_file.write_text(env_content)
     result = sp.run(["ggshield", "hmsl", "check", SECRETS_FILE_NAME, "--type", "env", "-n", "key", "--json"], stdout=sp.PIPE, stderr=sp.DEVNULL, text=True)
-    
+
     if result.stdout:
         try:
             data = json.loads(result.stdout)
@@ -435,8 +464,8 @@ def find_leaks(args):
                 sp.run(["ggshield", "hmsl", "check", SECRETS_FILE_NAME, "-n", "cleartext"])
             else:
                 print("⚠️  Error checking secrets - run with --verbose for details")
-    
-    
+
+
     if not args.keep_temp_file:
         try:
             os.remove(SECRETS_FILE_NAME)
