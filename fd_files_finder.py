@@ -10,7 +10,7 @@ Usage:
 
 Arguments:
     SEARCH_PATH    Directory to search (default: home directory)
-    
+
 Options:
     --path, -p     Alternative way to specify search path
     --help, -h     Show help message
