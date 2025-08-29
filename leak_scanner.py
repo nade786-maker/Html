@@ -395,12 +395,21 @@ def find_leaks(args):
     if result.stdout:
         try:
             data = json.loads(result.stdout)
-            leak_count = data.get("leaks_count", 0)
-            
+            total_leak_count = data.get("leaks_count", 0)
+            selected_leaks = [
+                leak for leak in data.get("leaks", [])
+                if leak.get("count", 0) < 10 # todo: make configurable with cli option
+            ]
+            leak_count = len(selected_leaks)
+            filtered_count = total_leak_count - leak_count
+
+            if filtered_count > 0:
+                print(f"ℹ️  Filtered out {filtered_count} leak{'s' if filtered_count > 1 else ''} with high public occurrence count (≥10)")
+
             if leak_count > 0:
                 print(f"⚠️  Found {leak_count} leaked secret{'s' if leak_count > 1 else ''}")
                 print()
-                for i, leak in enumerate(data.get("leaks", []), 1):
+                for i, leak in enumerate(selected_leaks, 1):
                     key_name = leak.get("name", "")
                     if SOURCE_SEPARATOR in key_name:
                         source_part, secret_part = key_name.split(SOURCE_SEPARATOR, 1)
@@ -412,7 +421,7 @@ def find_leaks(args):
                 print("   2. Review when the leak occurred and what systems may be compromised")
             else:
                 print("✅ All clear! No leaked secrets found.")
-                
+
         except (json.JSONDecodeError, KeyError) as e:
             if args.verbose:
                 print("Error parsing results, showing raw output:")
