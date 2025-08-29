@@ -232,7 +232,7 @@ def display_leak(i: int, leak: dict, source_desc: str, secret_part: str) -> None
     print(f'Secret name: "{secret_part}"')
     print(f"Source: {source_desc}")
     print(f'Secret hash: "{leak.get("hash", "")}"')
-    print(f'Distinct locations: {leak.get("count", 0)}')
+    print(f'Distinct locations in public repos: {leak.get("count", 0)}')
     if leak.get("url"):
         print("First location:")
         print(f'    URL: "{leak.get("url")}"')
