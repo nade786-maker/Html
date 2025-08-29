@@ -398,13 +398,13 @@ def find_leaks(args):
             total_leak_count = data.get("leaks_count", 0)
             selected_leaks = [
                 leak for leak in data.get("leaks", [])
-                if leak.get("count", 0) < 10 # todo: make configurable with cli option
+                if leak.get("count", 0) < args.max_public_occurrences
             ]
             leak_count = len(selected_leaks)
             filtered_count = total_leak_count - leak_count
 
             if filtered_count > 0:
-                print(f"ℹ️  Filtered out {filtered_count} leak{'s' if filtered_count > 1 else ''} with high public occurrence count (≥10)")
+                print(f"ℹ️  Filtered out {filtered_count} leak{'s' if filtered_count > 1 else ''} with high public occurrence count (≥{args.max_public_occurrences})")
 
             if leak_count > 0:
                 print(f"⚠️  Found {leak_count} leaked secret{'s' if leak_count > 1 else ''}")
@@ -462,6 +462,12 @@ def parse_args():
         "-v", "--verbose",
         action="store_true",
         help="Show detailed scanning progress and debug information"
+    )
+    parser.add_argument(
+        "--max-public-occurrences",
+        type=int,
+        help="Maximum number of public occurrences for a leak to be reported (default: 10)",
+        default=10,
     )
 
     return parser.parse_args()
