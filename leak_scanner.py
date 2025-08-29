@@ -147,11 +147,12 @@ class FileGatherer:
         self.results = {}
         self.start_time = time.time()
         self.files_processed = 0
-        # Our enhanced file counting tracking
-        self.npmrc_files_found = 0
-        self.npmrc_files_with_secrets = 0
-        self.env_files_found = 0
-        self.env_files_with_secrets = 0
+        # Combined tracking: upstream's total files scanned + our enhanced file counting
+        self.total_files_scanned = 0
+        self.npmrc_files_matched = 0
+        self.npmrc_secrets_extracted = 0
+        self.env_files_matched = 0
+        self.env_secrets_extracted = 0
         self.last_progress_time = self.start_time
         self.last_spinner_time = self.start_time
         self.spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"]
@@ -164,26 +165,29 @@ class FileGatherer:
         elapsed = int(current_time - self.start_time)
 
         print(
-            f"\r   ├─ Configuration files: {self.npmrc_files_found} found, {self.npmrc_files_with_secrets} with secrets ({npmrc_values} values, {elapsed}s)"
+            f"\r   └─ Total files scanned: {self.total_files_scanned} ({elapsed}s)" + " " * 20
         )
-        print(f"   └─ Environment files: {self.env_files_found} found, {self.env_files_with_secrets} with secrets ({env_values} values)")
+        print(
+            f"     ├─ Configuration files: {self.npmrc_files_matched} matched, {self.npmrc_secrets_extracted} secrets extracted"
+        )
+        print(f"     └─ Environment files: {self.env_files_matched} matched, {self.env_secrets_extracted} secrets extracted")
 
     def _show_timeout_message_and_counts(self, current_time: float):
         """Show timeout message and final counts."""
         if self.files_processed > 0:
             if self.verbose:
                 print(
-                    f"⏰ Timeout of {self.timeout}s reached after processing {self.files_processed} files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option"
+                    f"⏰ Timeout of {self.timeout}s reached after scanning {self.total_files_scanned} files and processing {self.files_processed} files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option"
                 )
             else:
                 print(
-                    f"\r⏰ Timeout reached after {self.files_processed} files ({self.timeout}s)" + " " * 20 + "\n",
+                    f"\r⏰ Timeout reached after {self.total_files_scanned} files scanned, {self.files_processed} processed ({self.timeout}s)" + " " * 10 + "\n",
                     end="",
                 )
         else:
             if self.verbose:
                 print(
-                    f"⏰ Timeout of {self.timeout}s reached while searching for files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option"
+                    f"⏰ Timeout of {self.timeout}s reached after scanning {self.total_files_scanned} files while searching. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option"
                 )
 
         self._count_file_types_and_show_final_counts(current_time)
@@ -196,10 +200,10 @@ class FileGatherer:
             elapsed = int(current_time - self.start_time)
 
             if self.files_processed == 0:
-                print(f"\r{spinner} Searching directories... ({elapsed}s)", end="", flush=True)
+                print(f"\r{spinner} Searching directories... {self.total_files_scanned} files scanned ({elapsed}s)", end="", flush=True)
             else:
                 print(
-                    f"\r{spinner} Scanning... {self.files_processed} files processed ({elapsed}s)", end="", flush=True
+                    f"\r{spinner} Scanning... {self.total_files_scanned} scanned, {self.files_processed} processed ({elapsed}s)", end="", flush=True
                 )
 
             self.last_spinner_time = current_time
@@ -213,18 +217,18 @@ class FileGatherer:
         if should_show_progress:
             spinner = self.spinner_chars[self.spinner_index % len(self.spinner_chars)]
             elapsed = int(current_time - self.start_time)
-            print(f"\r{spinner} Scanning... {self.files_processed} files processed ({elapsed}s)", end="", flush=True)
+            print(f"\r{spinner} Scanning... {self.total_files_scanned} scanned, {self.files_processed} processed ({elapsed}s)", end="", flush=True)
             self.last_progress_time = current_time
 
     def _process_file_and_extract_values(self, fpath: Path, filekey: str):
         """Process a single file, extract values, and show results."""
         self.files_processed += 1
 
-        # Count file types found
+        # Count file types matched
         if filekey.startswith(Source.NPMRC.value):
-            self.npmrc_files_found += 1
+            self.npmrc_files_matched += 1
         elif filekey.startswith(Source.ENV_FILE.value):
-            self.env_files_found += 1
+            self.env_files_matched += 1
         try:
             text = fpath.read_text()
         except Exception:
@@ -245,11 +249,11 @@ class FileGatherer:
             values = extract_assigned_values(text)
 
             if values:
-                # Count files that actually have secrets (our enhancement)
+                # Count files that actually have secrets extracted (our enhancement)
                 if filekey.startswith(Source.NPMRC.value):
-                    self.npmrc_files_with_secrets += 1
+                    self.npmrc_secrets_extracted += 1
                 elif filekey.startswith(Source.ENV_FILE.value):
-                    self.env_files_with_secrets += 1
+                    self.env_secrets_extracted += 1
 
             if self.verbose:
                 if values:
@@ -291,6 +295,8 @@ class FileGatherer:
                 # Process files in current directory
                 for filename in files:
                     fpath = Path(root) / filename
+                    self.total_files_scanned += 1
+                    
                     filekey = select_file(fpath)
 
                     if filekey is None:
