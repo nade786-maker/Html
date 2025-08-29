@@ -69,7 +69,7 @@ time ./leak_scanner.py --timeout 0  # Unlimited scan
 
 ### Test Cases for Agents
 - `--timeout 0`: Unlimited scanning (verify no immediate exit)
-- `--timeout 5`: Short timeout (verify graceful timeout handling)  
+- `--timeout 5`: Short timeout (verify graceful timeout handling)
 - `--verbose`: Detailed output mode
 - Both modes should show identical final counts
 - Terminal animation testing using `script` command
@@ -109,7 +109,7 @@ print(f"\r{spinner} Status...", end="", flush=True)
 print(f"{spinner} Detailed status...")
 ```
 
-### Timeout Pattern  
+### Timeout Pattern
 ```python
 if timeout > 0 and (time.time() - start_time) > timeout:
     # Handle timeout gracefully
@@ -184,6 +184,9 @@ time ./leak_scanner.py --timeout 0
 
 # Terminal behavior testing
 script typescript.log ./leak_scanner.py --timeout 5
+
+# Code formatting
+uv tool run black leak_scanner.py
 ```
 
 ### Fallback Commands (when uv unavailable)

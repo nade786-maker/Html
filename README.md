@@ -7,7 +7,7 @@ A defensive security tool to detect potential compromise from the Nx "s1ngularit
 The [Nx s1ngularity attack](https://blog.gitguardian.com/the-nx-s1ngularity-attack-inside-the-credential-leak/) was a sophisticated supply chain attack that compromised JavaScript developers through malicious packages in the Nx ecosystem. The attack targeted valuable credentials including:
 
 - GitHub tokens and SSH keys
-- npm authentication tokens  
+- npm authentication tokens
 - Environment variables containing API keys
 - Cryptocurrency wallet files
 - LLM client configurations (Claude, Gemini, ChatGPT)

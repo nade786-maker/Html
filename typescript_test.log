@@ -1,0 +1,21 @@
+Script started on Fri Aug 29 17:05:12 2025
+Command: ./leak_scanner.py --timeout 8 --verbose
+^D🔍 S1ngularity Scanner - Detecting leaked secrets
+🔒 All processing occurs locally, no secrets transmitted
+
+⚙️  Settings: min-chars=5, timeout=8s, keep-temp-file=no
+
+📁 Scanning system (timeout: 8s)...
+   ├─ Environment variables: 50 found
+   ├─ GitHub token: found
+⠋ Starting filesystem scan...⠙ Searching directories... (0s)⠹ Searching directories... (0s)⠸ Searching directories... (0s)⠼ Searching directories... (0s)⠴ Searching directories... (1s)⠦ Searching directories... (1s)⠧ Searching directories... (1s)⠋ Searching directories... (1s)⠙ Searching directories... (1s)⠹ Searching directories... (2s)⠸ Searching directories... (2s)⠼ Searching directories... (2s)⠴ Searching directories... (2s)⠦ Searching directories... (2s)⠧ Searching directories... (3s)⠋ Searching directories... (3s)⠙ Searching directories... (3s)⠹ Searching directories... (3s)⠸ Searching directories... (4s)⠼ Searching directories... (4s)⠴ Searching directories... (4s)⠦ Searching directories... (4s)⠧ Searching directories... (4s)⠋ Searching directories... (5s)⠙ Searching directories... (5s)⠹ Searching directories... (5s)⠸ Searching directories... (5s)⏰ Timeout of 8s reached while searching for files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option
+   ├─ Configuration files: 0 values found (0 files processed, 12s)
+   └─ Environment files: 0 values found
+
+🔍 Checking 38 values against public leak database (7 filtered, < 5 chars)...
+ℹ️  Filtered out 2 leaks with high public occurrence count (≥10)
+✅ All clear! No leaked secrets found.
+Cleaned up temporary file gg_gathered_values
+
+Command exit status: 0
+Script done on Fri Aug 29 17:05:29 2025
