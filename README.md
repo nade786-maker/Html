@@ -85,7 +85,7 @@ python leak_scanner.py
 ## Command Line Options
 
 - `--min-chars <number>` - Minimum character length for values to consider (default: 5)
-- `--keep-found-values` - Keep the temporary file containing gathered values instead of deleting it
+- `--keep-temp-file` - Keep the temporary file containing gathered values instead of deleting it
 - `--timeout <seconds>` - Maximum time to spend scanning filesystem for .env files (default: 0 for unlimited, set a number for time limit)
 - `--verbose, -v` - Show detailed scanning progress and debug information
 
@@ -106,7 +106,7 @@ The scanner collects potential secrets from these sources:
 - **No data transmission**: Secrets are never sent to GitGuardian or any external service
 - **Local processing**: All scanning happens locally on your machine
 - **Hash comparison**: Only SHA-256 hashes of potential secrets are compared against GitGuardian's database
-- **Temporary files**: A temporary file `gg_gathered_values` is created during scanning and automatically deleted (unless `--keep-found-values` is used)
+- **Temporary files**: A temporary file `gg_gathered_values` is created during scanning and automatically deleted (unless `--keep-temp-file` is used)
 
 ## Examples
 
@@ -123,7 +123,7 @@ Scan with longer timeout for large filesystems:
 
 Keep the temporary file for inspection:
 ```bash
-./leak_scanner.py --keep-found-values
+./leak_scanner.py --keep-temp-file
 ```
 
 Only consider longer values (reduces noise):

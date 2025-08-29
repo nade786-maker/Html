@@ -120,7 +120,7 @@ def select_file(fpath: Path) -> str | None:
     """Return the file key prefix if this file should be processed."""
     if fpath.name == '.npmrc':
         return NPMRC_PREFIX
-    elif fpath.name.startswith('.env'):
+    elif fpath.name.startswith('.env') and not "example" in fpath.name:
         safe_path = str(fpath).replace('/', '_').replace('.', '_')
         return f"{ENV_FILE_PREFIX}{SOURCE_SEPARATOR}{safe_path}"
     return None
@@ -363,8 +363,8 @@ def find_leaks(args):
     if args.verbose:
         print()
         timeout_desc = f"{args.timeout}s" if args.timeout > 0 else "unlimited"
-        keep_desc = "yes" if args.keep_found_values else "no"
-        print(f"⚙️  Settings: min-chars={args.min_chars}, timeout={timeout_desc}, keep-found-values={keep_desc}")
+        keep_desc = "yes" if args.keep_temp_file else "no"
+        print(f"⚙️  Settings: min-chars={args.min_chars}, timeout={timeout_desc}, keep-temp-file={keep_desc}")
         print()
 
     # Display scanning progress
@@ -420,7 +420,7 @@ def find_leaks(args):
                 print("⚠️  Error checking secrets - run with --verbose for details")
     
     
-    if not args.keep_found_values:
+    if not args.keep_temp_file:
         try:
             os.remove(SECRETS_FILE_NAME)
             if args.verbose:
@@ -438,9 +438,9 @@ def parse_args():
         default=5,
     )
     parser.add_argument(
-        "--keep-found-values",
+        "--keep-temp-file",
         action="store_true",
-        help="Do not delete the file that holds found values (potentially secrets)",
+        help="Keep the temporary file containing gathered values instead of deleting it",
     )
     parser.add_argument(
         "--timeout",
