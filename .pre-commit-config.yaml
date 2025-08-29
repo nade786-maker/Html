@@ -12,3 +12,7 @@ repos:
       - id: isort
         args: [--settings-path=pyproject.toml]
         files: "\\.(py)$"
+-   repo: https://github.com/gitguardian/ggshield
+    rev: v1.43.0
+    hooks:
+      - id: ggshield

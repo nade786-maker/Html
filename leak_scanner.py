@@ -144,6 +144,10 @@ def select_file(fpath: Path) -> str | None:
         return f"{Source.NPMRC.value}{SOURCE_SEPARATOR}{safe_path}"
     elif fpath.name.startswith(".env") and not "example" in fpath.name:
         return f"{Source.ENV_FILE.value}{SOURCE_SEPARATOR}{safe_path}"
+    elif fpath.name in PRIVATE_KEYS_FILENAMES or any(
+        fpath.name.endswith(suffix) for suffix in [".key", ".pem", ".p12", ".pfx"]
+    ):
+        return f"{Source.PRIVATE_KEY.value}{SOURCE_SEPARATOR}{safe_path}"
 
     return None
 
@@ -244,17 +248,27 @@ class FileGatherer:
                 print(f"Failed reading {fpath}")
             return
 
-        values = extract_assigned_values(text)
+        # Handle private key files differently - use full content as single value
+        if filekey.startswith(Source.PRIVATE_KEY.value):
+            # For private keys, use "PRIVATE_KEY" as the value name and full content as value
+            key = f"{filekey}{SOURCE_SEPARATOR}PRIVATE_KEY"
+            self.results[key] = text.strip()
 
-        if self.verbose:
-            if values:
-                print(f"\r   Found {len(values)} values in {fpath}" + " " * 20)
-            else:
-                print(f"\r   No values found in {fpath}" + " " * 20)
+            if self.verbose:
+                print(f"\r   Found private key in {fpath}" + " " * 20)
+        else:
+            # For other files, extract assigned values as before
+            values = extract_assigned_values(text)
 
-        for value in values:
-            key = f"{filekey}{SOURCE_SEPARATOR}{value}"
-            self.results[key] = value
+            if self.verbose:
+                if values:
+                    print(f"\r   Found {len(values)} values in {fpath}" + " " * 20)
+                else:
+                    print(f"\r   No values found in {fpath}" + " " * 20)
+
+            for value in values:
+                key = f"{filekey}{SOURCE_SEPARATOR}{value}"
+                self.results[key] = value
 
     def gather(self) -> dict[str, str]:
         """Main method to gather files and return results."""
