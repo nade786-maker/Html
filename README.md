@@ -16,7 +16,7 @@ Stolen credentials were exfiltrated to public GitHub repositories, resulting in 
 
 ## Scanner Purpose
 
-This project does not rely on the GitGuardian Secrets API, ensuring that no secrets are transmitted to GitGuardian or any third-party service. As a result, you maintain full control over your data. However, this may lead to a higher rate of false positives. Instead, this project relies on [HasMySecretLeaked](https://www.gitguardian.com/hasmysecretleaked). To learn more about how this works, visit our [What happens under the hood](https://docs.gitguardian.com/ggshield-docs/reference/hmsl/overview#what-happens-under-the-hood) page.
+This project relies on [HasMySecretLeaked](https://www.gitguardian.com/hasmysecretleaked). To learn more about how this works, visit our [What happens under the hood](https://docs.gitguardian.com/ggshield-docs/reference/hmsl/overview#what-happens-under-the-hood) page.
 
 ## Requirements
 
@@ -83,6 +83,7 @@ python leak_scanner.py
 - `--min-chars <number>` - Minimum character length for values to consider (default: 5)
 - `--keep-found-values` - Keep the temporary file containing gathered values instead of deleting it
 - `--timeout <seconds>` - Maximum time to spend scanning filesystem for .env files (default: 30, use 0 for unlimited)
+- `--verbose, -v` - Show detailed scanning progress and debug information
 
 ## How it works
 
@@ -124,6 +125,11 @@ Keep the temporary file for inspection:
 Only consider longer values (reduces noise):
 ```bash
 ./leak_scanner.py --min-chars 10
+```
+
+Show detailed scanning progress:
+```bash
+./leak_scanner.py --verbose
 ```
 
 Complete filesystem scan (no timeout):
