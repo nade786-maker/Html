@@ -24,24 +24,12 @@ PRIVATE_KEYS_FILENAMES = (
     "id_dsa",
     "id_ecdsa",
     "id_ed25519",
-    "server.key",
-    "private.key",
-    "ssl.key",
-    "mydomain.key",
-    "certificate.pfx",
     "certificate.p12",
     "secring.gpg",
-    "private.key",
     ".gnupg/private-keys-v1.d",
-    "aws_private.pem",
-    "my-key.pem",
-    "ta.key",
-    "server.key",
-    "client.key",
-    "private.pem",
-    "user.key",
     "private_key.dat",
 )
+PRIVATE_KEYS_SUFFIXES = (".key", ".pem", ".p12", ".pfx")
 
 
 class Source(Enum):
@@ -52,7 +40,6 @@ class Source(Enum):
     PRIVATE_KEY = "PRIVATE_KEY"
 
 
-SCAN_METHOD = {Source.NPMRC: "parse", Source.ENV_FILE: "parse", Source.PRIVATE_KEY: "full_text"}
 # Source tracking constants
 SOURCE_SEPARATOR = "__"
 
@@ -144,9 +131,7 @@ def select_file(fpath: Path) -> str | None:
         return f"{Source.NPMRC.value}{SOURCE_SEPARATOR}{safe_path}"
     elif fpath.name.startswith(".env") and not "example" in fpath.name:
         return f"{Source.ENV_FILE.value}{SOURCE_SEPARATOR}{safe_path}"
-    elif fpath.name in PRIVATE_KEYS_FILENAMES or any(
-        fpath.name.endswith(suffix) for suffix in [".key", ".pem", ".p12", ".pfx"]
-    ):
+    elif fpath.name in PRIVATE_KEYS_FILENAMES or any(fpath.name.endswith(suffix) for suffix in PRIVATE_KEYS_SUFFIXES):
         return f"{Source.PRIVATE_KEY.value}{SOURCE_SEPARATOR}{safe_path}"
 
     return None
@@ -174,21 +159,11 @@ class FileGatherer:
         private_keys = sum(1 for k in self.results.keys() if k.startswith(Source.PRIVATE_KEY.value))
         elapsed = int(current_time - self.start_time)
 
-        if self.verbose:
-            print(
-                f"\r   ├─ Configuration files: {npmrc_values} values found ({self.files_processed} files processed, {elapsed}s)"
-            )
-            print(f"   ├─ Environment files: {env_files} values found")
-            print(f"   └─ Private key files: {private_keys} values found")
-        else:
-            print(
-                f"\r   ├─ Configuration files: {npmrc_values} values found ({self.files_processed} files processed, {elapsed}s)",
-                end="",
-                flush=True,
-            )
-            print()
-            print(f"   ├─ Environment files: {env_files} values found")
-            print(f"   └─ Private key files: {private_keys} values found")
+        print(
+            f"\r   ├─ Configuration files: {npmrc_values} values found ({self.files_processed} files processed, {elapsed}s)"
+        )
+        print(f"   ├─ Environment files: {env_files} values found")
+        print(f"   └─ Private key files: {private_keys} values found")
 
     def _show_timeout_message_and_counts(self, current_time: float):
         """Show timeout message and final counts."""
@@ -370,12 +345,7 @@ def gather_all_secrets(timeout: int, verbose: bool = False) -> dict[str, str]:
         all_values[key] = value
         env_vars += 1
 
-    # Show environment variables progress
-    if verbose:
-        print(f"   ├─ Environment variables: {env_vars} found")
-    else:
-        print(f"\r   ├─ Environment variables: {env_vars} found", end="", flush=True)
-        print()  # Move to next line for next output
+    print(f"   ├─ Environment variables: {env_vars} found")
 
     # Collect GitHub token
     gh_token = handle_github_token_command()
@@ -387,17 +357,9 @@ def gather_all_secrets(timeout: int, verbose: bool = False) -> dict[str, str]:
 
     # Show GitHub token progress
     if github_found:
-        if verbose:
-            print(f"   ├─ GitHub token: found")
-        else:
-            print(f"\r   ├─ GitHub token: found", end="", flush=True)
-            print()  # Move to next line for next output
+        print(f"   ├─ GitHub token: found")
     else:
-        if verbose:
-            print(f"   ├─ GitHub token: not found")
-        else:
-            print(f"\r   ├─ GitHub token: not found", end="", flush=True)
-            print()  # Move to next line for next output
+        print(f"   ├─ GitHub token: not found")
 
     # Collect files using optimized os.walk method
     file_values = gather_files_by_patterns(timeout, verbose)
