@@ -22,6 +22,7 @@ This project relies on [HasMySecretLeaked](https://www.gitguardian.com/hasmysecr
 
 - **Python ≥3.9** (enforced at runtime)
 - **[ggshield](https://github.com/GitGuardian/ggshield)** - GitGuardian's CLI tool for secret scanning
+- **[uv](https://github.com/astral-sh/uv)** (optional, recommended) - Modern Python package manager for better dependency isolation
 - **[GitHub CLI](https://cli.github.com/)** (optional) - for extracting GitHub tokens
 
 ## Installation
@@ -59,22 +60,25 @@ For more installation options, see the [ggshield documentation](https://github.c
 
 ### Run the Scanner
 
-**macOS/Linux:**
+**Preferred approach with uv (recommended):**
+
+First, install [uv](https://github.com/astral-sh/uv?tab=readme-ov-file#installation) for modern Python dependency management.
+
 ```bash
 git clone https://github.com/GitGuardian/s1ngularity-scanner
 cd s1ngularity-scanner
-
-# With uv (if available)
 ./leak_scanner.py
+```
 
-# Or with Python directly
+**Alternative with Python directly:**
+
+**macOS/Linux:**
+```bash
 python3 leak_scanner.py
 ```
 
 **Windows:**
 ```bash
-git clone https://github.com/GitGuardian/s1ngularity-scanner
-cd s1ngularity-scanner
 python leak_scanner.py
 ```
 
@@ -82,7 +86,7 @@ python leak_scanner.py
 
 - `--min-chars <number>` - Minimum character length for values to consider (default: 5)
 - `--keep-found-values` - Keep the temporary file containing gathered values instead of deleting it
-- `--timeout <seconds>` - Maximum time to spend scanning filesystem for .env files (default: 30, use 0 for unlimited)
+- `--timeout <seconds>` - Maximum time to spend scanning filesystem for .env files (default: 0 for unlimited, set a number for time limit)
 - `--verbose, -v` - Show detailed scanning progress and debug information
 
 ## How it works
@@ -132,15 +136,15 @@ Show detailed scanning progress:
 ./leak_scanner.py --verbose
 ```
 
-Complete filesystem scan (no timeout):
+Limited time scan (30 seconds):
 ```bash
-./leak_scanner.py --timeout 0
+./leak_scanner.py --timeout 30
 ```
 
 ## Limitations
 
 - **No AI queries**: Unlike the original exploit, we don't ask Claude, Gemini or Q for files that may contain secrets
-- **Filesystem timeout**: Large filesystems may not be fully scanned within the default 30-second timeout
+- **Filesystem scanning**: Large filesystems may take time to scan completely. Use the timeout option e.g. `--timeout 30` to limit the time spent scanning if needed
 - **Directory exclusions**: Hidden directories (`.git`, `.cache`, etc.) and `node_modules` are skipped for performance
 - **Pattern matching**: Only detects key-value assignments in standard formats (may miss unconventional secret storage)
 - **False positives**: May flag legitimate non-secret values that happen to match secret patterns
