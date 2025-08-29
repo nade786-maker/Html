@@ -14,14 +14,37 @@ import time
 from enum import Enum
 from pathlib import Path
 
-if sys.version_info < (3, 9):
-    print("Invalid python version, use a version >= 3.9")
+# Configuration constants
+MIN_PYTHON_VERSION = (3, 9)
+SECRETS_FILE_NAME = "gg_gathered_values"
+
+if sys.version_info < MIN_PYTHON_VERSION:
+    print(f"Invalid python version, use a version >= {'.'.join(map(str, MIN_PYTHON_VERSION))}")
     sys.exit(1)
 
-SECRETS_FILE_NAME = "gg_gathered_values"
+# Default values for command line arguments
+MIN_CHARS_DEFAULT = 5
+MAX_PUBLIC_OCCURRENCES_DEFAULT = 10
+TIMEOUT_DEFAULT = 0
+
+# Progress and UI constants
+SPINNER_UPDATE_INTERVAL = 0.2
+PROGRESS_UPDATE_INTERVAL = 1.0
+PROGRESS_FILE_FREQUENCY = 3
+OUTPUT_PADDING = 20
+TIMEOUT_PADDING = 10
+VERBOSE_OUTPUT_PADDING = 20
+
+# GitHub token timeout and validation
+GITHUB_TOKEN_TIMEOUT = 5
+GITHUB_TOKEN_PATTERNS = r"^(gho_|ghp_)"
+
+# Regex limits and patterns
+REGEX_VALUE_MAX_LENGTH = 5000
+
 PRIVATE_KEYS_FILENAMES = (
     "id_rsa",
-    "id_dsa",
+    "id_dsa", 
     "id_ecdsa",
     "id_ed25519",
     "certificate.p12",
@@ -44,20 +67,20 @@ class Source(Enum):
 SOURCE_SEPARATOR = "__"
 
 assignment_regex = re.compile(
-    r"""
+    rf"""
     ^\s*
     [a-zA-Z_]\w*
     \s*=\s*
-    (?P<value>.{1,5000})
+    (?P<value>.{{1,{REGEX_VALUE_MAX_LENGTH}}})
 """,
     re.VERBOSE,
 )
 
 json_assignment_regex = re.compile(
-    r"""
+    rf"""
     "[a-zA-Z_]\w*"
     \s*:\s*
-    "(?P<value>.{1,5000}?)"
+    "(?P<value>.{{1,{REGEX_VALUE_MAX_LENGTH}}}?)"
 """,
     re.VERBOSE,
 )
@@ -92,12 +115,12 @@ def handle_github_token_command(*args) -> str | None:
                 ["gh", "auth", "token"],
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=GITHUB_TOKEN_TIMEOUT,
                 stdin=sp.DEVNULL,
             )
             if result.returncode == 0 and result.stdout:
                 token = result.stdout.strip()
-                if re.match(r"^(gho_|ghp_)", token):
+                if re.match(GITHUB_TOKEN_PATTERNS, token):
                     return token
         except (sp.TimeoutExpired, sp.SubprocessError):
             pass
@@ -157,7 +180,7 @@ class FileGatherer:
         elapsed = int(current_time - self.start_time)
 
         print(
-            f"\r   └─ Total files scanned: {self.total_files_scanned} ({elapsed}s)" + " " * 20
+            f"\r   └─ Total files scanned: {self.total_files_scanned} ({elapsed}s)" + " " * OUTPUT_PADDING
         )
         print(
             f"     ├─ Configuration files: {self.npmrc_files_matched} matched, {self.npmrc_secrets_extracted} secrets extracted"
@@ -173,7 +196,7 @@ class FileGatherer:
                 )
             else:
                 print(
-                    f"\r⏰ Timeout reached after {self.total_files_scanned} files scanned, {self.files_processed} processed ({self.timeout}s)" + " " * 10 + "\n",
+                    f"\r⏰ Timeout reached after {self.total_files_scanned} files scanned, {self.files_processed} processed ({self.timeout}s)" + " " * TIMEOUT_PADDING + "\n",
                     end="",
                 )
         else:
@@ -186,7 +209,7 @@ class FileGatherer:
 
     def _update_spinner_progress(self, current_time: float):
         """Update and show spinner progress during scanning."""
-        if (current_time - self.last_spinner_time) >= 0.2:
+        if (current_time - self.last_spinner_time) >= SPINNER_UPDATE_INTERVAL:
             self.spinner_index += 1
             spinner = self.spinner_chars[self.spinner_index % len(self.spinner_chars)]
             elapsed = int(current_time - self.start_time)
@@ -203,7 +226,7 @@ class FileGatherer:
     def _show_file_progress_if_needed(self, current_time: float):
         """Show progress update when processing files if conditions are met."""
         should_show_progress = (
-            self.files_processed % 3 == 0 or self.files_processed == 1 or (current_time - self.last_progress_time) >= 1
+            self.files_processed % PROGRESS_FILE_FREQUENCY == 0 or self.files_processed == 1 or (current_time - self.last_progress_time) >= PROGRESS_UPDATE_INTERVAL
         )
 
         if should_show_progress:
@@ -235,7 +258,7 @@ class FileGatherer:
             self.results[key] = text.strip()
 
             if self.verbose:
-                print(f"\r   Found private key in {fpath}" + " " * 20)
+                print(f"\r   Found private key in {fpath}" + " " * VERBOSE_OUTPUT_PADDING)
         else:
             # For other files, extract assigned values as before
             values = extract_assigned_values(text)
@@ -249,9 +272,9 @@ class FileGatherer:
 
             if self.verbose:
                 if values:
-                    print(f"\r   Found {len(values)} values in {fpath}" + " " * 20)
+                    print(f"\r   Found {len(values)} values in {fpath}" + " " * VERBOSE_OUTPUT_PADDING)
                 else:
-                    print(f"\r   No values found in {fpath}" + " " * 20)
+                    print(f"\r   No values found in {fpath}" + " " * VERBOSE_OUTPUT_PADDING)
 
             for value in values:
                 key = f"{filekey}{SOURCE_SEPARATOR}{value}"
@@ -526,7 +549,7 @@ def parse_args():
         "--min-chars",
         type=int,
         help="Values with less chars than this are not considered",
-        default=5,
+        default=MIN_CHARS_DEFAULT,
     )
     parser.add_argument(
         "--keep-temp-file",
@@ -537,7 +560,7 @@ def parse_args():
         "--timeout",
         type=int,
         help="Number of seconds before aborting discovery of files on hard drive. Use 0 for unlimited scanning (default: 0).",
-        default=0,
+        default=TIMEOUT_DEFAULT,
     )
     parser.add_argument(
         "-v", "--verbose", action="store_true", help="Show detailed scanning progress and debug information"
@@ -546,7 +569,7 @@ def parse_args():
         "--max-public-occurrences",
         type=int,
         help="Maximum number of public occurrences for a leak to be reported (default: 10)",
-        default=10,
+        default=MAX_PUBLIC_OCCURRENCES_DEFAULT,
     )
 
     return parser.parse_args()
