@@ -131,8 +131,9 @@ def select_file(fpath: Path) -> str | None:
         return f"{Source.NPMRC.value}{SOURCE_SEPARATOR}{safe_path}"
     elif fpath.name.startswith(".env") and not "example" in fpath.name:
         return f"{Source.ENV_FILE.value}{SOURCE_SEPARATOR}{safe_path}"
-    elif fpath.name in PRIVATE_KEYS_FILENAMES or any(fpath.name.endswith(suffix) for suffix in PRIVATE_KEYS_SUFFIXES):
-        return f"{Source.PRIVATE_KEY.value}{SOURCE_SEPARATOR}{safe_path}"
+    # Note: disabling for now as it's not clear how to treat linebreaks in private keys
+    # elif fpath.name in PRIVATE_KEYS_FILENAMES or any(fpath.name.endswith(suffix) for suffix in PRIVATE_KEYS_SUFFIXES):
+    #     return f"{Source.PRIVATE_KEY.value}{SOURCE_SEPARATOR}{safe_path}"
 
     return None
 
@@ -162,8 +163,9 @@ class FileGatherer:
         print(
             f"\r   ├─ Configuration files: {npmrc_values} values found ({self.files_processed} files processed, {elapsed}s)"
         )
-        print(f"   ├─ Environment files: {env_files} values found")
-        print(f"   └─ Private key files: {private_keys} values found")
+        print(f"   └─ Environment files: {env_files} values found")
+        # TODO: uncomment when private keys are enabled
+        # print(f"   └─ Private key files: {private_keys} values found")
 
     def _show_timeout_message_and_counts(self, current_time: float):
         """Show timeout message and final counts."""
