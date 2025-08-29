@@ -13,6 +13,7 @@ import sys
 import time
 from enum import Enum
 from pathlib import Path
+from typing import Any
 
 # Configuration constants
 MIN_PYTHON_VERSION = (3, 9)
@@ -31,16 +32,6 @@ TIMEOUT_DEFAULT = 0
 SPINNER_UPDATE_INTERVAL = 0.2
 PROGRESS_UPDATE_INTERVAL = 1.0
 PROGRESS_FILE_FREQUENCY = 3
-OUTPUT_PADDING = 20
-TIMEOUT_PADDING = 10
-VERBOSE_OUTPUT_PADDING = 20
-
-# GitHub token timeout and validation
-GITHUB_TOKEN_TIMEOUT = 5
-GITHUB_TOKEN_PATTERNS = r"^(gho_|ghp_)"
-
-# Regex limits and patterns
-REGEX_VALUE_MAX_LENGTH = 5000
 
 PRIVATE_KEYS_FILENAMES = (
     "id_rsa",
@@ -67,20 +58,20 @@ class Source(Enum):
 SOURCE_SEPARATOR = "__"
 
 assignment_regex = re.compile(
-    rf"""
+    r"""
     ^\s*
     [a-zA-Z_]\w*
     \s*=\s*
-    (?P<value>.{{1,{REGEX_VALUE_MAX_LENGTH}}})
+    (?P<value>.{1,5000})
 """,
     re.VERBOSE,
 )
 
 json_assignment_regex = re.compile(
-    rf"""
+    r"""
     "[a-zA-Z_]\w*"
     \s*:\s*
-    "(?P<value>.{{1,{REGEX_VALUE_MAX_LENGTH}}}?)"
+    "(?P<value>.{1,5000}?)"
 """,
     re.VERBOSE,
 )
@@ -115,12 +106,12 @@ def handle_github_token_command(*args) -> str | None:
                 ["gh", "auth", "token"],
                 capture_output=True,
                 text=True,
-                timeout=GITHUB_TOKEN_TIMEOUT,
+                timeout=5,
                 stdin=sp.DEVNULL,
             )
             if result.returncode == 0 and result.stdout:
                 token = result.stdout.strip()
-                if re.match(GITHUB_TOKEN_PATTERNS, token):
+                if re.match(r"^(gho_|ghp_)", token):
                     return token
         except (sp.TimeoutExpired, sp.SubprocessError):
             pass
@@ -155,7 +146,7 @@ def select_file(fpath: Path) -> str | None:
 class FileGatherer:
     """Handles file scanning and progress display for gathering secrets from files."""
 
-    def __init__(self, timeout: int, verbose: bool = False):
+    def __init__(self, timeout: int, verbose: bool = False) -> None:
         self.timeout = timeout
         self.verbose = verbose
         self.home = Path.home()
@@ -173,21 +164,21 @@ class FileGatherer:
         self.spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"]
         self.spinner_index = 0
 
-    def _count_file_types_and_show_final_counts(self, current_time: float):
+    def _count_file_types_and_show_final_counts(self, current_time: float) -> None:
         """Count values by file type and show final counts with enhanced statistics."""
         npmrc_values = sum(1 for k in self.results.keys() if k.startswith(Source.NPMRC.value))
         env_values = sum(1 for k in self.results.keys() if k.startswith(Source.ENV_FILE.value))
         elapsed = int(current_time - self.start_time)
 
         print(
-            f"\r   └─ Total files scanned: {self.total_files_scanned} ({elapsed}s)" + " " * OUTPUT_PADDING
+            f"\r   └─ Total files scanned: {self.total_files_scanned} ({elapsed}s)" + " " * 20
         )
         print(
             f"     ├─ Configuration files: {self.npmrc_files_matched} matched, {self.npmrc_secrets_extracted} secrets extracted"
         )
         print(f"     └─ Environment files: {self.env_files_matched} matched, {self.env_secrets_extracted} secrets extracted")
 
-    def _show_timeout_message_and_counts(self, current_time: float):
+    def _show_timeout_message_and_counts(self, current_time: float) -> None:
         """Show timeout message and final counts."""
         if self.files_processed > 0:
             if self.verbose:
@@ -196,7 +187,7 @@ class FileGatherer:
                 )
             else:
                 print(
-                    f"\r⏰ Timeout reached after {self.total_files_scanned} files scanned, {self.files_processed} processed ({self.timeout}s)" + " " * TIMEOUT_PADDING + "\n",
+                    f"\r⏰ Timeout reached after {self.total_files_scanned} files scanned, {self.files_processed} processed ({self.timeout}s)" + " " * 10 + "\n",
                     end="",
                 )
         else:
@@ -207,7 +198,7 @@ class FileGatherer:
 
         self._count_file_types_and_show_final_counts(current_time)
 
-    def _update_spinner_progress(self, current_time: float):
+    def _update_spinner_progress(self, current_time: float) -> None:
         """Update and show spinner progress during scanning."""
         if (current_time - self.last_spinner_time) >= SPINNER_UPDATE_INTERVAL:
             self.spinner_index += 1
@@ -223,7 +214,7 @@ class FileGatherer:
 
             self.last_spinner_time = current_time
 
-    def _show_file_progress_if_needed(self, current_time: float):
+    def _show_file_progress_if_needed(self, current_time: float) -> None:
         """Show progress update when processing files if conditions are met."""
         should_show_progress = (
             self.files_processed % PROGRESS_FILE_FREQUENCY == 0 or self.files_processed == 1 or (current_time - self.last_progress_time) >= PROGRESS_UPDATE_INTERVAL
@@ -235,7 +226,7 @@ class FileGatherer:
             print(f"\r{spinner} Scanning... {self.total_files_scanned} scanned, {self.files_processed} processed ({elapsed}s)", end="", flush=True)
             self.last_progress_time = current_time
 
-    def _process_file_and_extract_values(self, fpath: Path, filekey: str):
+    def _process_file_and_extract_values(self, fpath: Path, filekey: str) -> None:
         """Process a single file, extract values, and show results."""
         self.files_processed += 1
 
@@ -258,7 +249,7 @@ class FileGatherer:
             self.results[key] = text.strip()
 
             if self.verbose:
-                print(f"\r   Found private key in {fpath}" + " " * VERBOSE_OUTPUT_PADDING)
+                print(f"\r   Found private key in {fpath}" + " " * 20)
         else:
             # For other files, extract assigned values as before
             values = extract_assigned_values(text)
@@ -272,9 +263,9 @@ class FileGatherer:
 
             if self.verbose:
                 if values:
-                    print(f"\r   Found {len(values)} values in {fpath}" + " " * VERBOSE_OUTPUT_PADDING)
+                    print(f"\r   Found {len(values)} values in {fpath}" + " " * 20)
                 else:
-                    print(f"\r   No values found in {fpath}" + " " * VERBOSE_OUTPUT_PADDING)
+                    print(f"\r   No values found in {fpath}" + " " * 20)
 
             for value in values:
                 key = f"{filekey}{SOURCE_SEPARATOR}{value}"
@@ -362,7 +353,7 @@ def get_source_description(source_part: str) -> str:
     return source_mapping.get(source_part, source_part)
 
 
-def display_leak(i: int, leak: dict, source_type: str, source_path: str, secret_part: str) -> None:
+def display_leak(i: int, leak: dict[str, Any], source_type: str, source_path: str, secret_part: str) -> None:
     """Display a single leaked secret with formatting."""
     print(f"🔑 Secret #{i}")
     print(f"   Name: {secret_part}")
@@ -409,7 +400,7 @@ def gather_all_secrets(timeout: int, verbose: bool = False) -> dict[str, str]:
     return all_values
 
 
-def find_leaks(args):
+def find_leaks(args) -> None:
     if shutil.which("ggshield") is None:
         print("Please install ggshield first, see https://github.com/GitGuardian/ggshield#installation")
         sys.exit(1)
@@ -543,7 +534,7 @@ def find_leaks(args):
             pass
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--min-chars",
