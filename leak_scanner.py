@@ -112,17 +112,6 @@ def handle_github_token_command(*args) -> str | None:
     return None
 
 
-def should_skip_path(fpath: Path) -> bool:
-    """Check if a file path should be skipped based on directory exclusions."""
-    parts = fpath.parts
-    for part in parts:
-        if part.startswith(".") and part not in {".env", ".npmrc"} and not part.startswith(".env"):
-            return True
-        if part == "node_modules":
-            return True
-    return False
-
-
 def indices_to_delete(dirs: list[str]) -> list[int]:
     """Return indices of directories to skip during os.walk traversal."""
     indices = []
@@ -136,12 +125,15 @@ def indices_to_delete(dirs: list[str]) -> list[int]:
 
 def select_file(fpath: Path) -> str | None:
     """Return the file key prefix if this file should be processed."""
+    # Use our enhanced path encoding for safety
+    safe_path = str(fpath).replace("/", "__SLASH__").replace(".", "__DOT__")
     if fpath.name == ".npmrc":
-        return Source.NPMRC.value
+        return f"{Source.NPMRC.value}{SOURCE_SEPARATOR}{safe_path}"
     elif fpath.name.startswith(".env") and not "example" in fpath.name:
-        # Encode path to preserve special characters in env var keys
-        safe_path = str(fpath).replace("/", "__SLASH__").replace(".", "__DOT__")
         return f"{Source.ENV_FILE.value}{SOURCE_SEPARATOR}{safe_path}"
+    # Note: disabling for now as it's not clear how to treat linebreaks in private keys
+    # elif fpath.name in PRIVATE_KEYS_FILENAMES or any(fpath.name.endswith(suffix) for suffix in PRIVATE_KEYS_SUFFIXES):
+    #     return f"{Source.PRIVATE_KEY.value}{SOURCE_SEPARATOR}{safe_path}"
     return None
 
 
@@ -166,28 +158,15 @@ class FileGatherer:
         self.spinner_index = 0
 
     def _count_file_types_and_show_final_counts(self, current_time: float):
-        """Count values by file type and show final counts with our enhanced statistics."""
+        """Count values by file type and show final counts with enhanced statistics."""
         npmrc_values = sum(1 for k in self.results.keys() if k.startswith(Source.NPMRC.value))
         env_values = sum(1 for k in self.results.keys() if k.startswith(Source.ENV_FILE.value))
         elapsed = int(current_time - self.start_time)
 
-        if self.verbose:
-            print(
-                f"\r   ├─ Configuration files: {self.npmrc_files_found} found, {self.npmrc_files_with_secrets} with secrets ({npmrc_values} values, {elapsed}s)"
-            )
-            print(
-                f"   └─ Environment files: {self.env_files_found} found, {self.env_files_with_secrets} with secrets ({env_values} values)"
-            )
-        else:
-            print(
-                f"\r   ├─ Configuration files: {self.npmrc_files_found} found, {self.npmrc_files_with_secrets} with secrets ({npmrc_values} values, {elapsed}s)",
-                end="",
-                flush=True,
-            )
-            print()
-            print(
-                f"   └─ Environment files: {self.env_files_found} found, {self.env_files_with_secrets} with secrets ({env_values} values)"
-            )
+        print(
+            f"\r   ├─ Configuration files: {self.npmrc_files_found} found, {self.npmrc_files_with_secrets} with secrets ({npmrc_values} values, {elapsed}s)"
+        )
+        print(f"   └─ Environment files: {self.env_files_found} found, {self.env_files_with_secrets} with secrets ({env_values} values)")
 
     def _show_timeout_message_and_counts(self, current_time: float):
         """Show timeout message and final counts."""
@@ -217,23 +196,11 @@ class FileGatherer:
             elapsed = int(current_time - self.start_time)
 
             if self.files_processed == 0:
-                if self.verbose:
-                    print(f"\r{spinner} Searching directories... ({elapsed}s)", end="", flush=True)
-                else:
-                    print(f"\r{spinner} Searching directories... ({elapsed}s)", end="", flush=True)
+                print(f"\r{spinner} Searching directories... ({elapsed}s)", end="", flush=True)
             else:
-                if self.verbose:
-                    print(
-                        f"\r{spinner} Scanning... {self.files_processed} files processed ({elapsed}s)",
-                        end="",
-                        flush=True,
-                    )
-                else:
-                    print(
-                        f"\r{spinner} Scanning... {self.files_processed} files processed ({elapsed}s)",
-                        end="",
-                        flush=True,
-                    )
+                print(
+                    f"\r{spinner} Scanning... {self.files_processed} files processed ({elapsed}s)", end="", flush=True
+                )
 
             self.last_spinner_time = current_time
 
@@ -246,14 +213,7 @@ class FileGatherer:
         if should_show_progress:
             spinner = self.spinner_chars[self.spinner_index % len(self.spinner_chars)]
             elapsed = int(current_time - self.start_time)
-            if self.verbose:
-                print(
-                    f"\r{spinner} Scanning... {self.files_processed} files processed ({elapsed}s)", end="", flush=True
-                )
-            else:
-                print(
-                    f"\r{spinner} Scanning... {self.files_processed} files processed ({elapsed}s)", end="", flush=True
-                )
+            print(f"\r{spinner} Scanning... {self.files_processed} files processed ({elapsed}s)", end="", flush=True)
             self.last_progress_time = current_time
 
     def _process_file_and_extract_values(self, fpath: Path, filekey: str):
@@ -265,7 +225,6 @@ class FileGatherer:
             self.npmrc_files_found += 1
         elif filekey.startswith(Source.ENV_FILE.value):
             self.env_files_found += 1
-
         try:
             text = fpath.read_text()
         except Exception:
@@ -273,23 +232,34 @@ class FileGatherer:
                 print(f"Failed reading {fpath}")
             return
 
-        values = extract_assigned_values(text)
-
-        if values:
-            # Count files that actually have secrets
-            if filekey.startswith(Source.NPMRC.value):
-                self.npmrc_files_with_secrets += 1
-            elif filekey.startswith(Source.ENV_FILE.value):
-                self.env_files_with_secrets += 1
+        # Handle private key files differently - use full content as single value
+        if filekey.startswith(Source.PRIVATE_KEY.value):
+            # For private keys, use "PRIVATE_KEY" as the value name and full content as value
+            key = f"{filekey}{SOURCE_SEPARATOR}PRIVATE_KEY"
+            self.results[key] = text.strip()
 
             if self.verbose:
-                print(f"\r   Found {len(values)} values in {fpath}" + " " * 20)
-        elif self.verbose:
-            print(f"\r   No values found in {fpath}" + " " * 20)
+                print(f"\r   Found private key in {fpath}" + " " * 20)
+        else:
+            # For other files, extract assigned values as before
+            values = extract_assigned_values(text)
 
-        for value in values:
-            key = f"{filekey}{SOURCE_SEPARATOR}{value}"
-            self.results[key] = value
+            if values:
+                # Count files that actually have secrets (our enhancement)
+                if filekey.startswith(Source.NPMRC.value):
+                    self.npmrc_files_with_secrets += 1
+                elif filekey.startswith(Source.ENV_FILE.value):
+                    self.env_files_with_secrets += 1
+
+            if self.verbose:
+                if values:
+                    print(f"\r   Found {len(values)} values in {fpath}" + " " * 20)
+                else:
+                    print(f"\r   No values found in {fpath}" + " " * 20)
+
+            for value in values:
+                key = f"{filekey}{SOURCE_SEPARATOR}{value}"
+                self.results[key] = value
 
     def gather(self) -> dict[str, str]:
         """Main method to gather files and return results."""
@@ -304,20 +274,21 @@ class FileGatherer:
             for root, dirs, files in os.walk(self.home):
                 current_time = time.time()
 
-                # Check timeout before processing directory
+                # Check timeout before processing directory - fix for timeout 0 bug
                 if self.timeout > 0 and (current_time - self.start_time) > self.timeout:
                     self._show_timeout_message_and_counts(current_time)
                     return self.results
 
-                # Update spinner to show progress
+                # Update spinner during directory traversal to show we're alive
                 self._update_spinner_progress(current_time)
 
-                # Skip unwanted directories during traversal (performance optimization)
+                # Remove unwanted directories during traversal (performance optimization)
                 nb_deleted = 0
                 for ind in indices_to_delete(dirs):
                     del dirs[ind - nb_deleted]
                     nb_deleted += 1
 
+                # Process files in current directory
                 for filename in files:
                     fpath = Path(root) / filename
                     filekey = select_file(fpath)
@@ -331,14 +302,13 @@ class FileGatherer:
                     current_time = time.time()
                     self._show_file_progress_if_needed(current_time)
 
-                    # Check timeout after processing each file
+                    # Check timeout after processing file
                     if self.timeout > 0 and (current_time - self.start_time) > self.timeout:
                         self._show_timeout_message_and_counts(current_time)
                         return self.results
 
         except KeyboardInterrupt:
-            if self.verbose:
-                print("Scan interrupted by user")
+            print("\nScan interrupted by user")
             return self.results
 
         # Show final completion counts
@@ -352,57 +322,23 @@ def gather_files_by_patterns(timeout: int, verbose: bool = False) -> dict[str, s
     return gatherer.gather()
 
 
-def get_source_description(source_part: str) -> tuple[str, str]:
-    """Convert source prefix to human-readable type and path/description."""
+def get_source_description(source_part: str) -> str:
+    """Convert source prefix to human-readable description."""
     source_mapping = {
-        Source.ENV_VAR.value: ("Environment variable", "os.environ"),
-        Source.GITHUB_TOKEN.value: ("GitHub Token", "gh auth token"),
-        Source.NPMRC.value: ("Configuration file", "~/.npmrc"),
+        Source.ENV_VAR.value: "Environment variable",
+        Source.GITHUB_TOKEN.value: "GitHub Token (gh auth token)",
+        Source.NPMRC.value: "~/.npmrc",
     }
 
-    if source_part == Source.ENV_FILE.value:
-        # Path will be extracted from secret_part in display_leak function
-        return ("Environment file", "")
-    elif source_part.startswith(Source.ENV_FILE.value):
-        # source_part format is: ENV_FILE__path_with_encoded_chars
-        prefix_with_sep = f"{Source.ENV_FILE.value}{SOURCE_SEPARATOR}"
-        if source_part.startswith(prefix_with_sep):
-            encoded_path = source_part[len(prefix_with_sep) :]
-            filepath = encoded_path.replace("__SLASH__", "/").replace("__DOT__", ".")
-        else:
-            filepath = source_part.replace(Source.ENV_FILE.value, "").replace("_", "/")
-        return ("Environment file", filepath)
+    if source_part.startswith(Source.ENV_FILE.value):
+        # Use our enhanced path decoding with __SLASH__/__DOT__
+        path_part = source_part.replace(f"{Source.ENV_FILE.value}{SOURCE_SEPARATOR}", "")
+        return path_part.replace("__SLASH__", "/").replace("__DOT__", ".")
+    elif source_part.startswith(Source.PRIVATE_KEY.value):
+        path_part = source_part.replace(f"{Source.PRIVATE_KEY.value}{SOURCE_SEPARATOR}", "")
+        return path_part.replace("__SLASH__", "/").replace("__DOT__", ".")
 
-    # Handle GitGuardian key name truncation with encoded paths
-    if "__SLASH__" in source_part or "__DOT__" in source_part:
-        decoded_part = source_part.replace("__SLASH__", "/").replace("__DOT__", ".")
-        if not decoded_part.startswith("/"):
-            decoded_part = "/" + decoded_part
-
-        env_pattern = "/.env"
-        if env_pattern in decoded_part:
-            env_idx = decoded_part.rfind(env_pattern)
-            if env_idx != -1:
-                next_part_idx = env_idx + len(env_pattern)
-                if next_part_idx < len(decoded_part):
-                    remaining = decoded_part[next_part_idx:]
-                    if remaining.startswith(".") or remaining.startswith("_"):  # .production or _production
-                        next_separator = remaining.find("_", 1) if remaining.startswith("_") else remaining.find("_")
-                        if next_separator != -1:
-                            filepath = decoded_part[: next_part_idx + next_separator]
-                            return ("Environment file", filepath)
-                        else:
-                            return ("Environment file", decoded_part[: next_part_idx + len(remaining)])
-                    else:
-                        return ("Environment file", decoded_part[:next_part_idx])
-
-        return ("Environment file", decoded_part)
-
-    if source_part.startswith("_Users_"):
-        filepath = source_part[1:].replace("_", "/")
-        return ("Environment file", filepath)
-
-    return source_mapping.get(source_part, ("Unknown", source_part))
+    return source_mapping.get(source_part, source_part)
 
 
 def display_leak(i: int, leak: dict, source_type: str, source_path: str, secret_part: str) -> None:
@@ -422,18 +358,16 @@ def display_leak(i: int, leak: dict, source_type: str, source_path: str, secret_
 def gather_all_secrets(timeout: int, verbose: bool = False) -> dict[str, str]:
     all_values = {}
 
+    # Collect environment variables
     env_vars = 0
     for value in os.environ.values():
         key = f"{Source.ENV_VAR.value}{SOURCE_SEPARATOR}{value}"
         all_values[key] = value
         env_vars += 1
 
-    if verbose:
-        print(f"   ├─ Environment variables: {env_vars} found")
-    else:
-        print(f"\r   ├─ Environment variables: {env_vars} found", end="", flush=True)
-        print()
+    print(f"   ├─ Environment variables: {env_vars} found")
 
+    # Collect GitHub token
     gh_token = handle_github_token_command()
     github_found = False
     if gh_token:
@@ -441,19 +375,13 @@ def gather_all_secrets(timeout: int, verbose: bool = False) -> dict[str, str]:
         all_values[key] = gh_token
         github_found = True
 
+    # Show GitHub token progress
     if github_found:
-        if verbose:
-            print(f"   ├─ GitHub token: found")
-        else:
-            print(f"\r   ├─ GitHub token: found", end="", flush=True)
-            print()
+        print(f"   ├─ GitHub token: found")
     else:
-        if verbose:
-            print(f"   ├─ GitHub token: not found")
-        else:
-            print(f"\r   ├─ GitHub token: not found", end="", flush=True)
-            print()
+        print(f"   ├─ GitHub token: not found")
 
+    # Collect files using enhanced FileGatherer
     file_values = gather_files_by_patterns(timeout, verbose)
     all_values.update(file_values)
 
@@ -529,7 +457,20 @@ def find_leaks(args):
                     key_name = leak.get("name", "")
                     if SOURCE_SEPARATOR in key_name:
                         source_part, secret_part = key_name.split(SOURCE_SEPARATOR, 1)
-                        source_type, source_path = get_source_description(source_part)
+                        source_path = get_source_description(source_part)
+                        # Determine source type based on the source part
+                        if source_part == Source.ENV_VAR.value:
+                            source_type = "Environment variable"
+                        elif source_part == Source.GITHUB_TOKEN.value:
+                            source_type = "GitHub Token"
+                        elif source_part.startswith(Source.NPMRC.value):
+                            source_type = "Configuration file"
+                        elif source_part.startswith(Source.ENV_FILE.value):
+                            source_type = "Environment file"
+                        elif source_part.startswith(Source.PRIVATE_KEY.value):
+                            source_type = "Private key file"
+                        else:
+                            source_type = "Unknown"
 
                         # Special handling for ENV_FILE where encoded path+secret is in secret_part
                         if source_part == Source.ENV_FILE.value and source_path == "":
