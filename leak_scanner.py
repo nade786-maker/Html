@@ -46,9 +46,10 @@ json_assignment_regex = re.compile(
 )
 
 
-def remove_quotes(value: str):
+def remove_quotes(value: str) -> str:
     if len(value) > 1 and value[0] == value[-1] and value[0] in ["'", '"']:
         return value[1:-1]
+    return value
 
 
 def extract_assigned_values(text: str) -> set[str]:
@@ -64,7 +65,7 @@ def extract_assigned_values(text: str) -> set[str]:
             pwd_value = m.group("value")
             res.append(pwd_value)
 
-    return {remove_quotes(val) for val in res if val is not None}
+    return {remove_quotes(val) for val in res}
 
 
 def handle_file_command(args):
