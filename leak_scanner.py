@@ -20,27 +20,27 @@ if sys.version_info < (3, 9):
 
 SECRETS_FILE_NAME = "gg_gathered_values"
 PRIVATE_KEYS_FILENAMES = (
-  "id_rsa",
-  "id_dsa",
-  "id_ecdsa",
-  "id_ed25519",
-  "server.key",
-  "private.key",
-  "ssl.key",
-  "mydomain.key",
-  "certificate.pfx",
-  "certificate.p12",
-  "secring.gpg",
-  "private.key",
-  ".gnupg/private-keys-v1.d",
-  "aws_private.pem",
-  "my-key.pem",
-  "ta.key",
-  "server.key",
-  "client.key",
-  "private.pem",
-  "user.key",
-  "private_key.dat"
+    "id_rsa",
+    "id_dsa",
+    "id_ecdsa",
+    "id_ed25519",
+    "server.key",
+    "private.key",
+    "ssl.key",
+    "mydomain.key",
+    "certificate.pfx",
+    "certificate.p12",
+    "secring.gpg",
+    "private.key",
+    ".gnupg/private-keys-v1.d",
+    "aws_private.pem",
+    "my-key.pem",
+    "ta.key",
+    "server.key",
+    "client.key",
+    "private.pem",
+    "user.key",
+    "private_key.dat",
 )
 
 
@@ -51,14 +51,10 @@ class Source(Enum):
     ENV_FILE = "ENV_FILE"
     PRIVATE_KEY = "PRIVATE_KEY"
 
-SCAN_METHOD = {
-    Source.NPMRC: "parse",
-    Source.ENV_FILE: "parse",
-    Source.PRIVATE_KEY: "full_text"
-}
+
+SCAN_METHOD = {Source.NPMRC: "parse", Source.ENV_FILE: "parse", Source.PRIVATE_KEY: "full_text"}
 # Source tracking constants
 SOURCE_SEPARATOR = "__"
-
 
 
 assignment_regex = re.compile(
@@ -134,184 +130,191 @@ def indices_to_delete(dirs: list[str]) -> list[int]:
     """Return indices of directories to skip during os.walk traversal."""
     indices = []
     for i, dirname in enumerate(dirs):
-        if dirname.startswith('.') and dirname not in {'.env', '.ssh'} and not dirname.startswith('.env'):
+        if dirname.startswith(".") and dirname not in {".env", ".ssh"} and not dirname.startswith(".env"):
             indices.append(i)
-        elif dirname == 'node_modules':
+        elif dirname == "node_modules":
             indices.append(i)
     return indices
 
 
 def select_file(fpath: Path) -> str | None:
     """Return the file key prefix if this file should be processed."""
-    safe_path = str(fpath).replace('/', '_').replace('.', '_')
-    if fpath.name == '.npmrc':
+    safe_path = str(fpath).replace("/", "_").replace(".", "_")
+    if fpath.name == ".npmrc":
         return f"{Source.NPMRC.value}{SOURCE_SEPARATOR}{safe_path}"
-    elif fpath.name.startswith('.env') and not "example" in fpath.name:
+    elif fpath.name.startswith(".env") and not "example" in fpath.name:
         return f"{Source.ENV_FILE.value}{SOURCE_SEPARATOR}{safe_path}"
 
     return None
 
 
-def gather_files_by_patterns(timeout: int, verbose: bool = False) -> dict[str, str]:
-    """Gather secrets from files using os.walk (performance optimized)."""
-    home = Path.home()
-    res = {}
-    start_time = time.time()
-    files_processed = 0
-    last_progress_time = start_time
-    last_spinner_time = start_time
+class FileGatherer:
+    """Handles file scanning and progress display for gathering secrets from files."""
 
-    # Progress indicator characters
-    spinner_chars = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧']
-    spinner_index = 0
+    def __init__(self, timeout: int, verbose: bool = False):
+        self.timeout = timeout
+        self.verbose = verbose
+        self.home = Path.home()
+        self.results = {}
+        self.start_time = time.time()
+        self.files_processed = 0
+        self.last_progress_time = self.start_time
+        self.last_spinner_time = self.start_time
+        self.spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"]
+        self.spinner_index = 0
 
-    # Show initial progress immediately
-    if not verbose:
-        print(f"\r{spinner_chars[0]} Starting scan...", end="", flush=True)
-    elif verbose:
-        print(f"\r{spinner_chars[0]} Starting filesystem scan...", end="", flush=True)
+    def _count_file_types_and_show_final_counts(self, current_time: float):
+        """Count values by file type and show final counts."""
+        npmrc_values = sum(1 for k in self.results.keys() if k.startswith(Source.NPMRC.value))
+        env_files = sum(1 for k in self.results.keys() if k.startswith(Source.ENV_FILE.value))
+        private_keys = sum(1 for k in self.results.keys() if k.startswith(Source.PRIVATE_KEY.value))
+        elapsed = int(current_time - self.start_time)
 
-    try:
-        for root, dirs, files in os.walk(home):
-            current_time = time.time()
+        if self.verbose:
+            print(
+                f"\r   ├─ Configuration files: {npmrc_values} values found ({self.files_processed} files processed, {elapsed}s)"
+            )
+            print(f"   ├─ Environment files: {env_files} values found")
+            print(f"   └─ Private key files: {private_keys} values found")
+        else:
+            print(
+                f"\r   ├─ Configuration files: {npmrc_values} values found ({self.files_processed} files processed, {elapsed}s)",
+                end="",
+                flush=True,
+            )
+            print()
+            print(f"   ├─ Environment files: {env_files} values found")
+            print(f"   └─ Private key files: {private_keys} values found")
 
-            # Check timeout before processing directory - fix for timeout 0 bug
-            if timeout > 0 and (current_time - start_time) > timeout:
-                if files_processed > 0:
-                    if verbose:
-                        print(f"⏰ Timeout of {timeout}s reached after processing {files_processed} files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option")
-                    else:
-                        print(f"\r⏰ Timeout reached after {files_processed} files ({timeout}s)" + " " * 20 + "\n", end="")
-                else:
-                    if verbose:
-                        print(f"⏰ Timeout of {timeout}s reached while searching for files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option")
-                # Still show final counts even on timeout
-                npmrc_values = sum(1 for k in res.keys() if k.startswith(Source.NPMRC.value))
-                env_files = sum(1 for k in res.keys() if k.startswith(Source.ENV_FILE.value))
-                private_keys = sum(1 for k in res.keys() if k.startswith(Source.PRIVATE_KEY.value))
-                elapsed = int(current_time - start_time)
-                if verbose:
-                    print(f"\r   ├─ Configuration files: {npmrc_values} values found ({files_processed} files processed, {elapsed}s)")
-                    print(f"   ├─ Environment files: {env_files} values found")
-                    print(f"   └─ Private key files: {private_keys} values found")
-                else:
-                    print(f"\r   ├─ Configuration files: {npmrc_values} values found ({files_processed} files processed, {elapsed}s)", end="", flush=True)
-                    print()
-                    print(f"   ├─ Environment files: {env_files} values found")
-                    print(f"   └─ Private key files: {private_keys} values found")
-                return res
-
-            # Update spinner during directory traversal to show we're alive
-            if (current_time - last_spinner_time) >= 0.2:
-                spinner_index += 1
-                spinner = spinner_chars[spinner_index % len(spinner_chars)]
-                elapsed = int(current_time - start_time)
-                if files_processed == 0:
-                    if verbose:
-                        print(f"\r{spinner} Searching directories... ({elapsed}s)", end="", flush=True)
-                    else:
-                        print(f"\r{spinner} Searching directories... ({elapsed}s)", end="", flush=True)
-                else:
-                    if verbose:
-                        print(f"\r{spinner} Scanning... {files_processed} files processed ({elapsed}s)", end="", flush=True)
-                    else:
-                        print(f"\r{spinner} Scanning... {files_processed} files processed ({elapsed}s)", end="", flush=True)
-                last_spinner_time = current_time
-
-            # Remove unwanted directories during traversal (performance optimization)
-            nb_deleted = 0
-            for ind in indices_to_delete(dirs):
-                del dirs[ind - nb_deleted]
-                nb_deleted += 1
-
-            # Process files in current directory
-            for filename in files:
-                fpath = Path(root) / filename
-                filekey = select_file(fpath)
-
-                if filekey is None:
-                    continue
-
-                files_processed += 1
-                try:
-                    text = fpath.read_text()
-                except Exception:
-                    if verbose:
-                        print(f"Failed reading {fpath}")
-                    continue
-
-                values = extract_assigned_values(text)
-                if values and verbose:
-                    print(f"\r   Found {len(values)} values in {fpath}" + " " * 20)
-                elif verbose:
-                    print(f"\r   No values found in {fpath}" + " " * 20)
-
-                for value in values:
-                    key = f"{filekey}{SOURCE_SEPARATOR}{value}"
-                    res[key] = value
-
-                # Show progress update when we find files
-                should_show_progress = (
-                    files_processed % 3 == 0 or
-                    files_processed == 1 or
-                    (current_time - last_progress_time) >= 1
+    def _show_timeout_message_and_counts(self, current_time: float):
+        """Show timeout message and final counts."""
+        if self.files_processed > 0:
+            if self.verbose:
+                print(
+                    f"⏰ Timeout of {self.timeout}s reached after processing {self.files_processed} files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option"
+                )
+            else:
+                print(
+                    f"\r⏰ Timeout reached after {self.files_processed} files ({self.timeout}s)" + " " * 20 + "\n",
+                    end="",
+                )
+        else:
+            if self.verbose:
+                print(
+                    f"⏰ Timeout of {self.timeout}s reached while searching for files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option"
                 )
 
-                if should_show_progress:
-                    spinner = spinner_chars[spinner_index % len(spinner_chars)]
-                    elapsed = int(current_time - start_time)
-                    if verbose:
-                        print(f"\r{spinner} Scanning... {files_processed} files processed ({elapsed}s)", end="", flush=True)
-                    else:
-                        print(f"\r{spinner} Scanning... {files_processed} files processed ({elapsed}s)", end="", flush=True)
-                    last_progress_time = current_time
+        self._count_file_types_and_show_final_counts(current_time)
 
-                # Check timeout after processing file
+    def _update_spinner_progress(self, current_time: float):
+        """Update and show spinner progress during scanning."""
+        if (current_time - self.last_spinner_time) >= 0.2:
+            self.spinner_index += 1
+            spinner = self.spinner_chars[self.spinner_index % len(self.spinner_chars)]
+            elapsed = int(current_time - self.start_time)
+
+            if self.files_processed == 0:
+                print(f"\r{spinner} Searching directories... ({elapsed}s)", end="", flush=True)
+            else:
+                print(
+                    f"\r{spinner} Scanning... {self.files_processed} files processed ({elapsed}s)", end="", flush=True
+                )
+
+            self.last_spinner_time = current_time
+
+    def _show_file_progress_if_needed(self, current_time: float):
+        """Show progress update when processing files if conditions are met."""
+        should_show_progress = (
+            self.files_processed % 3 == 0 or self.files_processed == 1 or (current_time - self.last_progress_time) >= 1
+        )
+
+        if should_show_progress:
+            spinner = self.spinner_chars[self.spinner_index % len(self.spinner_chars)]
+            elapsed = int(current_time - self.start_time)
+            print(f"\r{spinner} Scanning... {self.files_processed} files processed ({elapsed}s)", end="", flush=True)
+            self.last_progress_time = current_time
+
+    def _process_file_and_extract_values(self, fpath: Path, filekey: str):
+        """Process a single file, extract values, and show results."""
+        self.files_processed += 1
+        try:
+            text = fpath.read_text()
+        except Exception:
+            if self.verbose:
+                print(f"Failed reading {fpath}")
+            return
+
+        values = extract_assigned_values(text)
+
+        if self.verbose:
+            if values:
+                print(f"\r   Found {len(values)} values in {fpath}" + " " * 20)
+            else:
+                print(f"\r   No values found in {fpath}" + " " * 20)
+
+        for value in values:
+            key = f"{filekey}{SOURCE_SEPARATOR}{value}"
+            self.results[key] = value
+
+    def gather(self) -> dict[str, str]:
+        """Main method to gather files and return results."""
+        # Show initial progress immediately
+        spinner = self.spinner_chars[0]
+        if self.verbose:
+            print(f"\r{spinner} Starting filesystem scan...", end="", flush=True)
+        else:
+            print(f"\r{spinner} Starting scan...", end="", flush=True)
+
+        try:
+            for root, dirs, files in os.walk(self.home):
                 current_time = time.time()
-                if timeout > 0 and (current_time - start_time) > timeout:
-                    if verbose:
-                        print(f"⏰ Timeout of {timeout}s reached after processing {files_processed} files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option")
-                    else:
-                        print(f"\r⏰ Timeout reached after {files_processed} files ({timeout}s)" + " " * 20 + "\n", end="")
-                    # Still show final counts even on timeout
-                        npmrc_values = sum(1 for k in res.keys() if k.startswith(Source.NPMRC.value))
-                    env_files = sum(1 for k in res.keys() if k.startswith(Source.ENV_FILE.value))
-                    private_keys = sum(1 for k in res.keys() if k.startswith(Source.PRIVATE_KEY.value))
-                    elapsed = int(current_time - start_time)
-                    if verbose:
-                        print(f"\r   ├─ Configuration files: {npmrc_values} values found ({files_processed} files processed, {elapsed}s)")
-                        print(f"   ├─ Environment files: {env_files} values found")
-                        print(f"   └─ Private key files: {private_keys} values found")
-                    else:
-                        print(f"\r   ├─ Configuration files: {npmrc_values} values found ({files_processed} files processed, {elapsed}s)", end="", flush=True)
-                        print()
-                        print(f"   ├─ Environment files: {env_files} values found")
-                        print(f"   └─ Private key files: {private_keys} values found")
-                    return res
 
-    except KeyboardInterrupt:
-        if verbose:
-            print("Scan interrupted by user")
-        return res
+                # Check timeout before processing directory - fix for timeout 0 bug
+                if self.timeout > 0 and (current_time - self.start_time) > self.timeout:
+                    self._show_timeout_message_and_counts(current_time)
+                    return self.results
 
-    # Count final file results for progress display
-    npmrc_values = sum(1 for k in res.keys() if k.startswith(Source.NPMRC.value))
-    env_files = sum(1 for k in res.keys() if k.startswith(Source.ENV_FILE.value))
-    private_keys = sum(1 for k in res.keys() if k.startswith(Source.PRIVATE_KEY.value))
+                # Update spinner during directory traversal to show we're alive
+                self._update_spinner_progress(current_time)
 
-    # Show file scanning completion with file count and timing
-    elapsed = int(time.time() - start_time)
-    if verbose:
-        print(f"\r   ├─ Configuration files: {npmrc_values} values found ({files_processed} files processed, {elapsed}s)")
-        print(f"   ├─ Environment files: {env_files} values found")
-        print(f"   └─ Private key files: {private_keys} values found")
-    else:
-        print(f"\r   ├─ Configuration files: {npmrc_values} values found ({files_processed} files processed, {elapsed}s)", end="", flush=True)
-        print()
-        print(f"   ├─ Environment files: {env_files} values found")
-        print(f"   └─ Private key files: {private_keys} values found")
+                # Remove unwanted directories during traversal (performance optimization)
+                nb_deleted = 0
+                for ind in indices_to_delete(dirs):
+                    del dirs[ind - nb_deleted]
+                    nb_deleted += 1
 
-    return res
+                # Process files in current directory
+                for filename in files:
+                    fpath = Path(root) / filename
+                    filekey = select_file(fpath)
+
+                    if filekey is None:
+                        continue
+
+                    self._process_file_and_extract_values(fpath, filekey)
+
+                    # Show progress update when we find files
+                    current_time = time.time()
+                    self._show_file_progress_if_needed(current_time)
+
+                    # Check timeout after processing file
+                    if self.timeout > 0 and (current_time - self.start_time) > self.timeout:
+                        self._show_timeout_message_and_counts(current_time)
+                        return self.results
+
+        except KeyboardInterrupt:
+            print("\nScan interrupted by user")
+            return self.results
+
+        # Show final completion counts
+        self._count_file_types_and_show_final_counts(time.time())
+        return self.results
+
+
+def gather_files_by_patterns(timeout: int, verbose: bool = False) -> dict[str, str]:
+    """Gather secrets from files using os.walk (performance optimized)."""
+    gatherer = FileGatherer(timeout, verbose)
+    return gatherer.gather()
 
 
 def get_source_description(source_part: str) -> str:
@@ -336,7 +339,7 @@ def display_leak(i: int, leak: dict, source_desc: str, secret_part: str) -> None
     print(f"   Name: {secret_part}")
     print(f"   Source: {source_desc}")
     print(f"   Hash: {leak.get('hash', '')}")
-    count = leak.get('count', 0)
+    count = leak.get("count", 0)
     print(f"   Locations: {count} distinct Public GitHub repositories")
     if leak.get("url"):
         print(f"   First seen: {leak.get('url')} (only first location shown for security)")
@@ -391,9 +394,7 @@ def gather_all_secrets(timeout: int, verbose: bool = False) -> dict[str, str]:
 
 def find_leaks(args):
     if shutil.which("ggshield") is None:
-        print(
-            "Please install ggshield first, see https://github.com/GitGuardian/ggshield#installation"
-        )
+        print("Please install ggshield first, see https://github.com/GitGuardian/ggshield#installation")
         sys.exit(1)
 
     print("🔍 S1ngularity Scanner - Detecting leaked secrets")
@@ -420,28 +421,36 @@ def find_leaks(args):
     filtered_count = total_values - len(selected_items)
 
     if filtered_count > 0:
-        print(f"🔍 Checking {len(selected_items)} values against public leak database ({filtered_count} filtered, < {args.min_chars} chars)...")
+        print(
+            f"🔍 Checking {len(selected_items)} values against public leak database ({filtered_count} filtered, < {args.min_chars} chars)..."
+        )
     else:
         print(f"🔍 Checking {len(selected_items)} values against public leak database...")
 
     secrets_file = Path(SECRETS_FILE_NAME)
     env_content = "\n".join([f"{k}={v}" for k, v in selected_items])
     secrets_file.write_text(env_content)
-    result = sp.run(["ggshield", "hmsl", "check", SECRETS_FILE_NAME, "--type", "env", "-n", "key", "--json"], stdout=sp.PIPE, stderr=sp.DEVNULL, text=True)
+    result = sp.run(
+        ["ggshield", "hmsl", "check", SECRETS_FILE_NAME, "--type", "env", "-n", "key", "--json"],
+        stdout=sp.PIPE,
+        stderr=sp.DEVNULL,
+        text=True,
+    )
 
     if result.stdout:
         try:
             data = json.loads(result.stdout)
             total_leak_count = data.get("leaks_count", 0)
             selected_leaks = [
-                leak for leak in data.get("leaks", [])
-                if leak.get("count", 0) < args.max_public_occurrences
+                leak for leak in data.get("leaks", []) if leak.get("count", 0) < args.max_public_occurrences
             ]
             leak_count = len(selected_leaks)
             filtered_count = total_leak_count - leak_count
 
             if filtered_count > 0:
-                print(f"ℹ️  Filtered out {filtered_count} leak{'s' if filtered_count > 1 else ''} with high public occurrence count (≥{args.max_public_occurrences})")
+                print(
+                    f"ℹ️  Filtered out {filtered_count} leak{'s' if filtered_count > 1 else ''} with high public occurrence count (≥{args.max_public_occurrences})"
+                )
 
             if leak_count > 0:
                 print(f"⚠️  Found {leak_count} leaked secret{'s' if leak_count > 1 else ''}")
@@ -465,7 +474,6 @@ def find_leaks(args):
                 sp.run(["ggshield", "hmsl", "check", SECRETS_FILE_NAME, "-n", "cleartext"])
             else:
                 print("⚠️  Error checking secrets - run with --verbose for details")
-
 
     if not args.keep_temp_file:
         try:
@@ -493,12 +501,10 @@ def parse_args():
         "--timeout",
         type=int,
         help="Number of seconds before aborting discovery of files on hard drive. Use 0 for unlimited scanning (default: 0).",
-        default=0
+        default=0,
     )
     parser.add_argument(
-        "-v", "--verbose",
-        action="store_true",
-        help="Show detailed scanning progress and debug information"
+        "-v", "--verbose", action="store_true", help="Show detailed scanning progress and debug information"
     )
     parser.add_argument(
         "--max-public-occurrences",
