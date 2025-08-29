@@ -148,6 +148,7 @@ class FileGatherer:
         self.results = {}
         self.start_time = time.time()
         self.files_processed = 0
+        self.total_files_visited = 0
         self.last_progress_time = self.start_time
         self.last_spinner_time = self.start_time
         self.spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"]
@@ -161,7 +162,10 @@ class FileGatherer:
         elapsed = int(current_time - self.start_time)
 
         print(
-            f"\r   ├─ Configuration files: {npmrc_values} values found ({self.files_processed} files processed, {elapsed}s)"
+            f"\r   ├─ Total files visited: {self.total_files_visited} ({elapsed}s)"
+        )
+        print(
+            f"   ├─ Configuration files: {npmrc_values} values found ({self.files_processed} files processed)"
         )
         print(f"   └─ Environment files: {env_files} values found")
         # TODO: uncomment when private keys are enabled
@@ -172,17 +176,17 @@ class FileGatherer:
         if self.files_processed > 0:
             if self.verbose:
                 print(
-                    f"⏰ Timeout of {self.timeout}s reached after processing {self.files_processed} files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option"
+                    f"⏰ Timeout of {self.timeout}s reached after visiting {self.total_files_visited} files and processing {self.files_processed} files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option"
                 )
             else:
                 print(
-                    f"\r⏰ Timeout reached after {self.files_processed} files ({self.timeout}s)" + " " * 20 + "\n",
+                    f"\r⏰ Timeout reached after {self.total_files_visited} files visited, {self.files_processed} processed ({self.timeout}s)" + " " * 10 + "\n",
                     end="",
                 )
         else:
             if self.verbose:
                 print(
-                    f"⏰ Timeout of {self.timeout}s reached while searching for files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option"
+                    f"⏰ Timeout of {self.timeout}s reached after visiting {self.total_files_visited} files while searching. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option"
                 )
 
         self._count_file_types_and_show_final_counts(current_time)
@@ -195,10 +199,10 @@ class FileGatherer:
             elapsed = int(current_time - self.start_time)
 
             if self.files_processed == 0:
-                print(f"\r{spinner} Searching directories... ({elapsed}s)", end="", flush=True)
+                print(f"\r{spinner} Searching directories... {self.total_files_visited} files visited ({elapsed}s)", end="", flush=True)
             else:
                 print(
-                    f"\r{spinner} Scanning... {self.files_processed} files processed ({elapsed}s)", end="", flush=True
+                    f"\r{spinner} Scanning... {self.total_files_visited} visited, {self.files_processed} processed ({elapsed}s)", end="", flush=True
                 )
 
             self.last_spinner_time = current_time
@@ -212,7 +216,7 @@ class FileGatherer:
         if should_show_progress:
             spinner = self.spinner_chars[self.spinner_index % len(self.spinner_chars)]
             elapsed = int(current_time - self.start_time)
-            print(f"\r{spinner} Scanning... {self.files_processed} files processed ({elapsed}s)", end="", flush=True)
+            print(f"\r{spinner} Scanning... {self.total_files_visited} visited, {self.files_processed} processed ({elapsed}s)", end="", flush=True)
             self.last_progress_time = current_time
 
     def _process_file_and_extract_values(self, fpath: Path, filekey: str):
@@ -277,6 +281,8 @@ class FileGatherer:
                 # Process files in current directory
                 for filename in files:
                     fpath = Path(root) / filename
+                    self.total_files_visited += 1
+                    
                     filekey = select_file(fpath)
 
                     if filekey is None:
