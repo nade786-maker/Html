@@ -152,9 +152,9 @@ class FileGatherer:
         self.home = Path.home()
         self.results = {}
         self.start_time = time.time()
-        self.files_processed = 0
-        # Combined tracking: upstream's total files scanned + our enhanced file counting
-        self.total_files_scanned = 0
+        # Combined tracking: files visited during traversal + files actually scanned
+        self.total_files_visited = 0
+        self.files_scanned = 0
         self.npmrc_files_matched = 0
         self.npmrc_secrets_extracted = 0
         self.env_files_matched = 0
@@ -171,29 +171,29 @@ class FileGatherer:
         elapsed = int(current_time - self.start_time)
 
         print(
-            f"\r   └─ Total files scanned: {self.total_files_scanned} ({elapsed}s)" + " " * 20
+            f"\r   └─ Total files visited: {self.total_files_visited} ({elapsed}s)" + " " * 20
         )
         print(
-            f"     ├─ Configuration files: {self.npmrc_files_matched} matched, {self.npmrc_secrets_extracted} secrets extracted"
+            f"     ├─ Configuration files: {self.npmrc_files_matched} matched, {self.npmrc_files_scanned} scanned, {self.npmrc_secrets_extracted} secrets extracted"
         )
-        print(f"     └─ Environment files: {self.env_files_matched} matched, {self.env_secrets_extracted} secrets extracted")
+        print(f"     └─ Environment files: {self.env_files_matched} matched, {self.env_files_scanned} scanned, {self.env_secrets_extracted} secrets extracted")
 
     def _show_timeout_message_and_counts(self, current_time: float) -> None:
         """Show timeout message and final counts."""
-        if self.files_processed > 0:
+        if self.files_scanned > 0:
             if self.verbose:
                 print(
-                    f"⏰ Timeout of {self.timeout}s reached after scanning {self.total_files_scanned} files and processing {self.files_processed} files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option"
+                    f"⏰ Timeout of {self.timeout}s reached after visiting {self.total_files_visited} files and scanning {self.files_scanned} files. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option"
                 )
             else:
                 print(
-                    f"\r⏰ Timeout reached after {self.total_files_scanned} files scanned, {self.files_processed} processed ({self.timeout}s)" + " " * 10 + "\n",
+                    f"\r⏰ Timeout reached after {self.total_files_visited} files visited, {self.files_scanned} scanned ({self.timeout}s)" + " " * 10 + "\n",
                     end="",
                 )
         else:
             if self.verbose:
                 print(
-                    f"⏰ Timeout of {self.timeout}s reached after scanning {self.total_files_scanned} files while searching. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option"
+                    f"⏰ Timeout of {self.timeout}s reached after visiting {self.total_files_visited} files while searching. Not all files will be scanned. To scan more files, specify a bigger timeout with the --timeout option"
                 )
 
         self._count_file_types_and_show_final_counts(current_time)
@@ -205,11 +205,11 @@ class FileGatherer:
             spinner = self.spinner_chars[self.spinner_index % len(self.spinner_chars)]
             elapsed = int(current_time - self.start_time)
 
-            if self.files_processed == 0:
-                print(f"\r{spinner} Searching directories... {self.total_files_scanned} files scanned ({elapsed}s)", end="", flush=True)
+            if self.files_scanned == 0:
+                print(f"\r{spinner} Searching directories... {self.total_files_visited} files visited ({elapsed}s)", end="", flush=True)
             else:
                 print(
-                    f"\r{spinner} Scanning... {self.total_files_scanned} scanned, {self.files_processed} processed ({elapsed}s)", end="", flush=True
+                    f"\r{spinner} Scanning... {self.total_files_visited} visited, {self.files_scanned} scanned ({elapsed}s)", end="", flush=True
                 )
 
             self.last_spinner_time = current_time
@@ -217,18 +217,18 @@ class FileGatherer:
     def _show_file_progress_if_needed(self, current_time: float) -> None:
         """Show progress update when processing files if conditions are met."""
         should_show_progress = (
-            self.files_processed % PROGRESS_FILE_FREQUENCY == 0 or self.files_processed == 1 or (current_time - self.last_progress_time) >= PROGRESS_UPDATE_INTERVAL
+            self.files_scanned % PROGRESS_FILE_FREQUENCY == 0 or self.files_scanned == 1 or (current_time - self.last_progress_time) >= PROGRESS_UPDATE_INTERVAL
         )
 
         if should_show_progress:
             spinner = self.spinner_chars[self.spinner_index % len(self.spinner_chars)]
             elapsed = int(current_time - self.start_time)
-            print(f"\r{spinner} Scanning... {self.total_files_scanned} scanned, {self.files_processed} processed ({elapsed}s)", end="", flush=True)
+            print(f"\r{spinner} Scanning... {self.total_files_visited} visited, {self.files_scanned} scanned ({elapsed}s)", end="", flush=True)
             self.last_progress_time = current_time
 
     def _process_file_and_extract_values(self, fpath: Path, filekey: str) -> None:
         """Process a single file, extract values, and show results."""
-        self.files_processed += 1
+        self.files_scanned += 1
 
         # Count file types matched
         if filekey.startswith(Source.NPMRC.value):
@@ -301,7 +301,7 @@ class FileGatherer:
                 # Process files in current directory
                 for filename in files:
                     fpath = Path(root) / filename
-                    self.total_files_scanned += 1
+                    self.total_files_visited += 1
                     
                     filekey = select_file(fpath)
 
@@ -405,7 +405,7 @@ def find_leaks(args) -> None:
         print("Please install ggshield first, see https://github.com/GitGuardian/ggshield#installation")
         sys.exit(1)
 
-    print("🔍 S1ngularity Scanner - Detecting leaked secrets")
+    print("🔍 S1ngularity Scanner - Detecting if your secrets have been leaked publicly")
     print("🔒 All processing occurs locally, no secrets transmitted")
 
     if args.verbose:
@@ -431,11 +431,11 @@ def find_leaks(args) -> None:
     filtered_count = total_values - len(selected_items)
 
     if filtered_count > 0:
-        print(
-            f"🔍 Checking {len(selected_items)} values against public leak database ({filtered_count} filtered, < {args.min_chars} chars)..."
-        )
+        print(f"   • {filtered_count} values filtered out (shorter than {args.min_chars} characters)")
+        print(f"🔍 Checking {len(selected_items)} potential secrets against GitGuardian's public exposure database HMSL...")
+
     else:
-        print(f"🔍 Checking {len(selected_items)} values against public leak database...")
+        print(f"🔍 Checking {len(selected_items)} potential secrets against GitGuardian's public exposure database HMSL...")
 
     secrets_file = Path(SECRETS_FILE_NAME)
     env_content = "\n".join([f"{k}={v}" for k, v in selected_items])
