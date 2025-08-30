@@ -174,9 +174,9 @@ class FileGatherer:
             f"\r   └─ Total files visited: {self.total_files_visited} ({elapsed}s)" + " " * 20
         )
         print(
-            f"     ├─ Configuration files: {self.npmrc_files_matched} matched, {self.npmrc_files_scanned} scanned, {self.npmrc_secrets_extracted} secrets extracted"
+            f"     ├─ Configuration files: {self.npmrc_files_matched} matched, {self.npmrc_files_matched} scanned, {self.npmrc_secrets_extracted} secrets extracted"
         )
-        print(f"     └─ Environment files: {self.env_files_matched} matched, {self.env_files_scanned} scanned, {self.env_secrets_extracted} secrets extracted")
+        print(f"     └─ Environment files: {self.env_files_matched} matched, {self.env_files_matched} scanned, {self.env_secrets_extracted} secrets extracted")
 
     def _show_timeout_message_and_counts(self, current_time: float) -> None:
         """Show timeout message and final counts."""
